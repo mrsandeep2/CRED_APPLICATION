@@ -907,4 +907,97 @@ class Payment
 
         return min(100.00, max(5.00, round($amount * 0.01, 2)));
     }
+
+    /**
+     * Synchronize legacy paid bills into the authoritative payments and allocations ledger
+     * 
+     * Finds any bill with paid_amount > 0 that has no corresponding payment_allocations,
+     * and creates the authoritative payment, allocation, and event records.
+     * 
+     * @return int Number of legacy bills synchronized
+     */
+    public function syncLegacyPaidBills(): int
+    {
+        $stmt = $this->db->query(
+            "SELECT b.id, b.user_id, b.card_id, b.amount, b.paid_amount, b.status, b.created_at
+             FROM bills b
+             WHERE b.paid_amount > 0
+               AND NOT EXISTS (
+                   SELECT 1 FROM payment_allocations pa WHERE pa.bill_id = b.id
+               )"
+        );
+
+        $legacyBills = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (empty($legacyBills)) {
+            return 0;
+        }
+
+        $syncedCount = 0;
+        foreach ($legacyBills as $bill) {
+            $billId = (int)$bill['id'];
+            $userId = (int)$bill['user_id'];
+            $cardId = (int)$bill['card_id'];
+            $paidAmount = (float)$bill['paid_amount'];
+            $createdAt = $bill['created_at'] ?? date('Y-m-d H:i:s');
+
+            $cashback = self::calculateCashback($paidAmount, 'success');
+            $txnId = 'TXN-CRED-' . date('Ymd', strtotime($createdAt)) . '-' . strtoupper(substr(md5((string)$billId), 0, 8));
+            $gwRef = 'GW-LEGACY-' . str_pad((string)$billId, 6, '0', STR_PAD_LEFT);
+
+            $inTxn = $this->db->inTransaction();
+            $savepoint = 'sp_legacy_' . bin2hex(random_bytes(4));
+            if ($inTxn) {
+                $this->db->exec("SAVEPOINT {$savepoint}");
+            } else {
+                $this->db->beginTransaction();
+            }
+
+            try {
+                // Insert payment record with legacy timestamp
+                $pStmt = $this->db->prepare(
+                    'INSERT INTO payments 
+                        (user_id, bill_id, card_id, transaction_id, amount, payment_method, gateway_reference, status, cashback_earned, created_at)
+                     VALUES 
+                        (:user_id, :bill_id, :card_id, :transaction_id, :amount, :payment_method, :gateway_reference, :status, :cashback_earned, :created_at)'
+                );
+                $pStmt->execute([
+                    'user_id'           => $userId,
+                    'bill_id'           => $billId,
+                    'card_id'           => $cardId,
+                    'transaction_id'    => $txnId,
+                    'amount'            => $paidAmount,
+                    'payment_method'    => 'cred_pay',
+                    'gateway_reference' => $gwRef,
+                    'status'            => 'success',
+                    'cashback_earned'   => $cashback,
+                    'created_at'        => $createdAt
+                ]);
+
+                $paymentId = (int)$this->db->lastInsertId();
+
+                // Create allocation
+                $this->createAllocation($paymentId, $billId, $paidAmount, 'allocated');
+
+                // Create events
+                $this->addEvent($paymentId, 'created', $paidAmount, 'Historical statement settlement recorded');
+                $this->addEvent($paymentId, 'success', $paidAmount, 'Historical settlement confirmed');
+
+                if ($inTxn) {
+                    $this->db->exec("RELEASE SAVEPOINT {$savepoint}");
+                } else {
+                    $this->db->commit();
+                }
+
+                $syncedCount++;
+            } catch (\Throwable $e) {
+                if ($inTxn) {
+                    $this->db->exec("ROLLBACK TO SAVEPOINT {$savepoint}");
+                } elseif ($this->db->inTransaction()) {
+                    $this->db->rollBack();
+                }
+            }
+        }
+
+        return $syncedCount;
+    }
 }

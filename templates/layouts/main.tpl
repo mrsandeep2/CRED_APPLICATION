@@ -313,8 +313,8 @@
                     </li>
                     <li class="nav-item">
                         <a href="/cred-app/public/payments/analytics" class="nav-pill-btn">
-                            <i class="bi bi-graph-up-arrow text-primary"></i>
-                            <span>Analytics</span>
+                            <i class="bi bi-stars text-warning"></i>
+                            <span>Rewards & Analytics</span>
                         </a>
                     </li>
                     <li class="nav-item">

@@ -30,9 +30,9 @@
             <i class="bi bi-journal-check text-warning"></i>
             <span>History</span>
         </a>
-        <a href="/cred-app/public/payments/analytics" class="btn btn-sm btn-outline-primary rounded-pill px-3 d-inline-flex align-items-center gap-1 shadow-sm">
-            <i class="bi bi-graph-up-arrow text-primary"></i>
-            <span>Analytics</span>
+        <a href="/cred-app/public/payments/analytics" class="btn btn-sm btn-outline-warning text-dark rounded-pill px-3 d-inline-flex align-items-center gap-1 shadow-sm" style="border-color: #f59e0b; background: #fffdf5;">
+            <i class="bi bi-stars text-warning"></i>
+            <span class="fw-semibold">Rewards & Analytics</span>
         </a>
         <a href="/cred-app/public/bills/add" class="btn btn-royal-primary btn-sm px-3 py-2 rounded-pill shadow-sm">
             <i class="bi bi-plus-circle-fill"></i>
@@ -66,6 +66,59 @@
                     <span class="small text-muted text-center">
                         <i class="bi bi-shield-check text-success"></i> Audited Financial Ledger
                     </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CRED Rewards & Club Privileges Spotlight Banner -->
+<div class="card cred-card border-0 mb-4 shadow-sm" style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #1e3a8a 100%); color: #ffffff; border: 1.5px solid rgba(245, 158, 11, 0.4) !important;">
+    <div class="card-body p-4 position-relative">
+        <div class="row align-items-center g-3">
+            <div class="col-lg-7">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-warning text-dark rounded-pill px-3 py-1 fw-bold shadow-sm">
+                        <i class="bi bi-stars me-1"></i> CRED REWARDS & PRIVILEGES
+                    </span>
+                    <span class="badge bg-white bg-opacity-20 text-white rounded-pill px-2 py-1 small">
+                        10x Points Multiplier
+                    </span>
+                </div>
+                <h3 class="fw-bold text-white mb-1">
+                    Your Rewards Balance
+                </h3>
+                <p class="text-white text-opacity-75 small mb-0" style="max-width: 520px;">
+                    Earn 10 CRED Coins per ₹1 settled on card statements plus 1% guaranteed cashback credited directly.
+                </p>
+            </div>
+
+            <div class="col-lg-5">
+                <div class="d-flex flex-wrap align-items-center justify-content-lg-end gap-3">
+                    <!-- Reward Coins Box -->
+                    <div class="p-3 rounded-4 bg-white bg-opacity-10 border border-white border-opacity-20 text-center" style="min-width: 140px;">
+                        <span class="text-uppercase fw-bold text-warning small" style="letter-spacing: 0.8px; font-size: 0.72rem;">CRED Coins</span>
+                        <div class="d-flex align-items-center justify-content-center gap-1 my-1">
+                            <i class="bi bi-coin text-warning fs-5"></i>
+                            <h3 class="fw-bold text-white mb-0">{$total_reward_points|default:'0'}</h3>
+                        </div>
+                        <small class="text-white text-opacity-75" style="font-size: 0.7rem;">Active Points</small>
+                    </div>
+
+                    <!-- Cashback Earned Box -->
+                    <div class="p-3 rounded-4 bg-white bg-opacity-10 border border-white border-opacity-20 text-center" style="min-width: 140px;">
+                        <span class="text-uppercase fw-bold text-success-subtle small" style="letter-spacing: 0.8px; font-size: 0.72rem;">Total Cashback</span>
+                        <div class="d-flex align-items-center justify-content-center gap-1 my-1">
+                            <h3 class="fw-bold text-white mb-0">₹{$total_cashback|default:'0.00'}</h3>
+                        </div>
+                        <small class="text-white text-opacity-75" style="font-size: 0.7rem;">1% Guaranteed</small>
+                    </div>
+
+                    <!-- Action Link -->
+                    <a href="/cred-app/public/payments/analytics" class="btn btn-warning fw-bold text-dark rounded-pill px-3 py-2 shadow-sm d-inline-flex align-items-center gap-1">
+                        <i class="bi bi-gift-fill"></i>
+                        <span>Rewards Hub &rarr;</span>
+                    </a>
                 </div>
             </div>
         </div>
@@ -136,7 +189,7 @@
 
     <!-- Stat 4: Paid Bills -->
     <div class="col-sm-6 col-lg-3">
-        <a href="/cred-app/public/bills" class="text-decoration-none">
+        <a href="/cred-app/public/payments/history" class="text-decoration-none">
             <div class="card cred-card h-100 p-3">
                 <div class="card-body d-flex align-items-center justify-content-between p-2">
                     <div>

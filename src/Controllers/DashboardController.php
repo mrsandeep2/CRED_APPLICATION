@@ -8,11 +8,13 @@ use Sandeepkumar\CredApp\Core\Database;
 use Sandeepkumar\CredApp\Helpers\FinancialHelper;
 use Sandeepkumar\CredApp\Models\CreditCard;
 use Sandeepkumar\CredApp\Models\Bill;
+use Sandeepkumar\CredApp\Models\Payment;
 
 class DashboardController
 {
     private CreditCard $creditCard;
     private Bill $bill;
+    private Payment $payment;
 
     public function __construct(
         private Smarty $smarty,
@@ -20,6 +22,7 @@ class DashboardController
     ) {
         $this->creditCard = new CreditCard($database);
         $this->bill = new Bill($database);
+        $this->payment = new Payment($database);
     }
 
     public function index(): void
@@ -155,6 +158,13 @@ class DashboardController
             ];
         }
 
+        // Ensure legacy paid statements are synchronized in the authoritative payment ledger
+        $this->payment->syncLegacyPaidBills();
+
+        $totalPaid = $this->payment->getTotalPaidByUserId($userId);
+        $totalCashback = $this->payment->getTotalCashbackByUserId($userId);
+        $totalRewardPoints = (int)($totalPaid * 10);
+
         $flashMessage = $_SESSION['flash_message'] ?? null;
         $flashType = $_SESSION['flash_type'] ?? 'info';
         unset($_SESSION['flash_message'], $_SESSION['flash_type']);
@@ -165,6 +175,8 @@ class DashboardController
         $this->smarty->assign('total_due', number_format($totalDueAmount, 2));
         $this->smarty->assign('total_credit_limit', number_format($totalCreditLimit, 2));
         $this->smarty->assign('total_available_credit', number_format($totalAvailableCredit, 2));
+        $this->smarty->assign('total_cashback', number_format($totalCashback, 2));
+        $this->smarty->assign('total_reward_points', number_format($totalRewardPoints));
         $this->smarty->assign('card_count', $cardCount);
         $this->smarty->assign('paid_bills', $paidBillsCount);
         $this->smarty->assign('pending_bills', $pendingBillsCount);

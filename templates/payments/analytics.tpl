@@ -345,6 +345,165 @@
         </div>
 
     </div>
+
+    <!-- Exclusive CRED Rewards & Perks Catalog Section -->
+    <div class="card cred-card shadow-sm border-0 mb-4" style="background: linear-gradient(135deg, #1e1b4b 0%, #1e3a8a 50%, #0f172a 100%); color: #ffffff;">
+        <div class="card-header border-bottom border-white border-opacity-10 p-4 d-flex flex-wrap align-items-center justify-content-between gap-3 bg-transparent">
+            <div>
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="badge bg-warning text-dark rounded-pill px-3 py-1 fw-bold">
+                        <i class="bi bi-gift-fill me-1"></i> EXCLUSIVE REWARDS STORE
+                    </span>
+                    <span class="badge bg-white bg-opacity-20 text-white rounded-pill px-2 py-1 small">
+                        Balance: {$total_reward_points|default:'0'} Coins
+                    </span>
+                </div>
+                <h4 class="fw-bold text-white mb-0">Claim Your Member Perks</h4>
+                <p class="text-white text-opacity-75 small mb-0">Redeem accumulated CRED Coins for curated lifestyle vouchers and statement credits.</p>
+            </div>
+
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-warning fw-bold fs-5 d-flex align-items-center gap-1">
+                    <i class="bi bi-coin"></i> {$total_reward_points|default:'0'} <span class="fs-6 text-white text-opacity-75 fw-normal">Coins Available</span>
+                </span>
+            </div>
+        </div>
+
+        <div class="card-body p-4">
+            <div class="row g-3">
+                <!-- Perk 1 -->
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 bg-white bg-opacity-10 border border-white border-opacity-20 rounded-4 text-white p-3 d-flex flex-column justify-content-between">
+                        <div>
+                            <div class="d-flex align-items-center justify-content-between mb-3">
+                                <span class="badge bg-warning text-dark rounded-pill px-2 py-1 fw-bold small">
+                                    <i class="bi bi-bag-heart-fill"></i> Shopping
+                                </span>
+                                <span class="badge bg-white bg-opacity-20 text-warning fw-bold rounded-pill px-2 py-1">
+                                    10,000 Coins
+                                </span>
+                            </div>
+                            <h5 class="fw-bold text-white mb-1">₹100 Bill Credit</h5>
+                            <p class="text-white text-opacity-75 small mb-3">Instant cash rebate credited directly to your next credit card settlement.</p>
+                        </div>
+                        <button class="btn btn-warning btn-sm w-100 rounded-pill fw-bold text-dark" data-bs-toggle="modal" data-bs-target="#perkClaimModal" data-perk-name="₹100 Instant Statement Credit" data-perk-coins="10000">
+                            <i class="bi bi-check2-circle me-1"></i> Redeem Perk
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Perk 2 -->
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 bg-white bg-opacity-10 border border-white border-opacity-20 rounded-4 text-white p-3 d-flex flex-column justify-content-between">
+                        <div>
+                            <div class="d-flex align-items-center justify-content-between mb-3">
+                                <span class="badge bg-info text-dark rounded-pill px-2 py-1 fw-bold small">
+                                    <i class="bi bi-cup-hot-fill"></i> Dining
+                                </span>
+                                <span class="badge bg-white bg-opacity-20 text-warning fw-bold rounded-pill px-2 py-1">
+                                    20,000 Coins
+                                </span>
+                            </div>
+                            <h5 class="fw-bold text-white mb-1">10% Off Fine Dining</h5>
+                            <p class="text-white text-opacity-75 small mb-3">Exclusive table reservation privilege at luxury 5-star partner hotels.</p>
+                        </div>
+                        <button class="btn btn-warning btn-sm w-100 rounded-pill fw-bold text-dark" data-bs-toggle="modal" data-bs-target="#perkClaimModal" data-perk-name="10% Off Fine Dining at Partner Luxury Hotels" data-perk-coins="20000">
+                            <i class="bi bi-check2-circle me-1"></i> Redeem Perk
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Perk 3 -->
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 bg-white bg-opacity-10 border border-white border-opacity-20 rounded-4 text-white p-3 d-flex flex-column justify-content-between">
+                        <div>
+                            <div class="d-flex align-items-center justify-content-between mb-3">
+                                <span class="badge bg-success text-white rounded-pill px-2 py-1 fw-bold small">
+                                    <i class="bi bi-airplane-engines-fill"></i> Travel
+                                </span>
+                                <span class="badge bg-white bg-opacity-20 text-warning fw-bold rounded-pill px-2 py-1">
+                                    30,000 Coins
+                                </span>
+                            </div>
+                            <h5 class="fw-bold text-white mb-1">Lounge Access Pass</h5>
+                            <p class="text-white text-opacity-75 small mb-3">Complimentary domestic airport lounge pass with gourmet refreshments.</p>
+                        </div>
+                        <button class="btn btn-warning btn-sm w-100 rounded-pill fw-bold text-dark" data-bs-toggle="modal" data-bs-target="#perkClaimModal" data-perk-name="Complimentary Airport Lounge Access Pass" data-perk-coins="30000">
+                            <i class="bi bi-check2-circle me-1"></i> Redeem Perk
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Perk 4 -->
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 bg-white bg-opacity-10 border border-white border-opacity-20 rounded-4 text-white p-3 d-flex flex-column justify-content-between">
+                        <div>
+                            <div class="d-flex align-items-center justify-content-between mb-3">
+                                <span class="badge bg-primary text-white rounded-pill px-2 py-1 fw-bold small">
+                                    <i class="bi bi-cart-check-fill"></i> Shopping
+                                </span>
+                                <span class="badge bg-white bg-opacity-20 text-warning fw-bold rounded-pill px-2 py-1">
+                                    50,000 Coins
+                                </span>
+                            </div>
+                            <h5 class="fw-bold text-white mb-1">₹500 Gift Voucher</h5>
+                            <p class="text-white text-opacity-75 small mb-3">Premium brand voucher usable on Amazon, Flipkart, or Apple Store.</p>
+                        </div>
+                        <button class="btn btn-warning btn-sm w-100 rounded-pill fw-bold text-dark" data-bs-toggle="modal" data-bs-target="#perkClaimModal" data-perk-name="₹500 Multi-Brand Shopping Gift Card" data-perk-coins="50000">
+                            <i class="bi bi-check2-circle me-1"></i> Redeem Perk
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Perk Redemption Modal -->
+    <div class="modal fade" id="perkClaimModal" tabindex="-1" aria-labelledby="perkClaimModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content rounded-4 border-0 shadow-lg text-start">
+                <div class="modal-header border-0 pb-0 text-center d-flex flex-column align-items-center position-relative pt-4">
+                    <button type="button" class="btn-close position-absolute end-0 top-0 m-3" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <div class="d-inline-flex align-items-center justify-content-center rounded-circle mb-2" 
+                         style="width: 60px; height: 60px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1.5px solid #f59e0b; color: #b45309; font-size: 1.8rem; box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);">
+                        <i class="bi bi-gift-fill"></i>
+                    </div>
+                    <h5 class="modal-title fw-bold text-dark" id="perkClaimModalLabel">CRED Privilege Claim</h5>
+                    <p class="text-muted small mb-0">Exclusive Royal Member Benefit</p>
+                </div>
+
+                <div class="modal-body p-4 text-center">
+                    <h5 class="fw-bold text-dark mb-2" id="modalPerkTitle">Member Benefit</h5>
+                    <p class="text-muted small mb-3">
+                        Your claim has been verified against your available CRED Coins balance (<span class="fw-bold text-warning-emphasis">{$total_reward_points|default:'0'} pts</span>).
+                    </p>
+                    <div class="p-3 bg-light rounded-3 border mb-3 text-start small">
+                        <div class="d-flex justify-content-between py-1 border-bottom">
+                            <span class="text-muted">Benefit Status</span>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-0">Active & Available</span>
+                        </div>
+                        <div class="d-flex justify-content-between py-1 border-bottom">
+                            <span class="text-muted">Multiplier</span>
+                            <span class="fw-semibold text-dark">10x Points on every ₹1 settled</span>
+                        </div>
+                        <div class="d-flex justify-content-between py-1">
+                            <span class="text-muted">Cashback Guarantee</span>
+                            <span class="fw-semibold text-success">1% Auto-Credited</span>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning py-2 px-3 small rounded-3 mb-0 text-start">
+                        <i class="bi bi-stars text-warning me-1"></i> <strong>CRED Demonstration:</strong> Settle more credit card statements to continuously accumulate Coins & Cashback!
+                    </div>
+                </div>
+
+                <div class="modal-footer border-0 pt-0 justify-content-center pb-4">
+                    <button type="button" class="btn btn-royal-primary rounded-pill px-4 btn-sm" data-bs-dismiss="modal">
+                        <i class="bi bi-check-lg"></i> Great, Thanks!
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 {else}
     <!-- Empty Analytics State -->
     <div class="card cred-card shadow-sm border-0 p-5 text-center my-4">

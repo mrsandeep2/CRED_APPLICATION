@@ -574,6 +574,7 @@ class PaymentController
         }
 
         $userId = (int)$_SESSION['user_id'];
+        $this->payment->syncLegacyPaidBills();
         $rawPayments = $this->payment->findByUserId($userId);
 
         $methodLabels = [
@@ -699,6 +700,7 @@ class PaymentController
         }
 
         $userId = (int)$_SESSION['user_id'];
+        $this->payment->syncLegacyPaidBills();
 
         $totalPaid = $this->payment->getTotalPaidByUserId($userId);
         $monthlySpend = $this->payment->getMonthlySpend($userId);
