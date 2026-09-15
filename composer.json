@@ -1,0 +1,13 @@
+{
+    "name": "sandeepkumar/cred-app",
+    "description": "CRED Credit Card Management Application",
+    "type": "project",
+    "autoload": {
+        "psr-4": {
+            "Sandeepkumar\\CredApp\\": "src/"
+        }
+    },
+    "require": {
+        "smarty/smarty": "^5.8"
+    }
+}
