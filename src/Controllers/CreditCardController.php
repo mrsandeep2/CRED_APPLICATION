@@ -74,7 +74,16 @@ class CreditCardController
             $latestBill = $latestBillsPerCard[$cardId] ?? null;
             if ($latestBill !== null) {
                 $billAmountFloat = (float)$latestBill['amount'];
-                $minDueFloat = FinancialHelper::calculateMinimumDue($billAmountFloat);
+                $billPaidFloat = (float)($latestBill['paid_amount'] ?? 0.00);
+                $billRemainingFloat = max(0.00, round($billAmountFloat - $billPaidFloat, 2));
+                $minDueFloat = FinancialHelper::calculateMinimumDue($billRemainingFloat);
+
+                $derivedStatus = FinancialHelper::getDerivedStatementStatus(
+                    $latestBill['status'],
+                    $latestBill['due_date'],
+                    $billAmountFloat,
+                    $billPaidFloat
+                );
 
                 $dueDateTimestamp = strtotime($latestBill['due_date']);
                 $formattedDueDate = $dueDateTimestamp ? date('d M Y', $dueDateTimestamp) : $latestBill['due_date'];
@@ -82,12 +91,15 @@ class CreditCardController
                 $dueDateObj = new DateTime($latestBill['due_date']);
                 $diffDays = (int)$today->diff($dueDateObj)->format('%r%a');
 
-                if ($latestBill['status'] === 'paid') {
+                if ($derivedStatus['code'] === 'paid') {
                     $urgencyText = 'Settled & Paid';
                     $urgencyClass = 'success';
-                } elseif ($diffDays < 0) {
+                } elseif ($derivedStatus['code'] === 'overdue') {
                     $urgencyText = 'Overdue by ' . abs($diffDays) . ' days';
                     $urgencyClass = 'danger';
+                } elseif ($derivedStatus['code'] === 'partially_paid') {
+                    $urgencyText = 'Remaining: ₹' . number_format($billRemainingFloat, 2);
+                    $urgencyClass = 'info';
                 } elseif ($diffDays === 0) {
                     $urgencyText = 'Due Today!';
                     $urgencyClass = 'danger';
@@ -101,15 +113,21 @@ class CreditCardController
 
                 $card['has_statement'] = true;
                 $card['statement'] = [
-                    'id' => (int)$latestBill['id'],
-                    'status' => $latestBill['status'],
-                    'amount' => number_format($billAmountFloat, 2),
-                    'raw_amount' => $billAmountFloat,
-                    'min_due' => number_format($minDueFloat, 2),
-                    'raw_min_due' => $minDueFloat,
-                    'due_date' => $formattedDueDate,
-                    'urgency_text' => $urgencyText,
-                    'urgency_class' => $urgencyClass
+                    'id'                  => (int)$latestBill['id'],
+                    'status'              => $latestBill['status'],
+                    'derived_code'        => $derivedStatus['code'],
+                    'derived_label'       => $derivedStatus['label'],
+                    'derived_badge'       => $derivedStatus['badge_class'],
+                    'amount'              => number_format($billAmountFloat, 2),
+                    'raw_amount'          => $billAmountFloat,
+                    'paid_amount'         => number_format($billPaidFloat, 2),
+                    'remaining_due'       => number_format($billRemainingFloat, 2),
+                    'raw_remaining_due'   => $billRemainingFloat,
+                    'min_due'             => number_format($minDueFloat, 2),
+                    'raw_min_due'         => $minDueFloat,
+                    'due_date'            => $formattedDueDate,
+                    'urgency_text'        => $urgencyText,
+                    'urgency_class'       => $urgencyClass
                 ];
             } else {
                 $card['has_statement'] = false;
@@ -182,13 +200,12 @@ class CreditCardController
         $expiryYear = trim($_POST['expiry_year'] ?? '');
         $creditLimit = trim($_POST['credit_limit'] ?? '');
 
-        // Preserve non-sensitive form values only (card number is excluded)
         $old = [
             'card_holder_name' => $cardHolderName,
-            'bank_name' => $bankName,
-            'expiry_month' => $expiryMonth,
-            'expiry_year' => $expiryYear,
-            'credit_limit' => $creditLimit
+            'bank_name'        => $bankName,
+            'expiry_month'     => $expiryMonth,
+            'expiry_year'      => $expiryYear,
+            'credit_limit'     => $creditLimit
         ];
 
         $errors = [];
@@ -273,4 +290,3 @@ class CreditCardController
         exit;
     }
 }
-

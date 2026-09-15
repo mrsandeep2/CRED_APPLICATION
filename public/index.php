@@ -43,6 +43,7 @@ $router->get('/payments/failed', [$paymentController, 'showFailed']);
 $router->get('/payments/history', [$paymentController, 'showHistory']);
 $router->get('/payments', [$paymentController, 'showHistory']);
 $router->get('/payments/analytics', [$paymentController, 'showAnalytics']);
+$router->post('/payments/reverse', [$paymentController, 'reversePayment']);
 $router->get('/register', [$authController, 'register']);
 $router->post('/register', [$authController, 'register']);
 $router->get('/login', [$authController, 'login']);

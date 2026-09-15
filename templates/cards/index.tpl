@@ -219,7 +219,7 @@
 
                         <!-- 3. Current Statement / Bill Section -->
                         <div class="p-3 mb-3 rounded-3 border" style="background: #ffffff;">
-                            {if $card.has_statement && $card.statement.status == 'pending'}
+                            {if $card.has_statement && $card.statement.derived_code != 'paid'}
                                 <div class="d-flex align-items-center justify-content-between mb-2">
                                     <div class="d-flex align-items-center gap-1">
                                         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-2 py-1 small">
@@ -232,9 +232,16 @@
                                 </div>
 
                                 <div class="d-flex align-items-center justify-content-between mb-1">
-                                    <span class="text-muted small">Total Statement Due:</span>
-                                    <span class="fw-bold text-dark fs-6">₹{$card.statement.amount}</span>
+                                    <span class="text-muted small">Statement Remaining:</span>
+                                    <span class="fw-bold text-dark fs-6">₹{$card.statement.remaining_due}</span>
                                 </div>
+
+                                {if $card.statement.paid_amount > 0}
+                                    <div class="d-flex align-items-center justify-content-between mb-1 small text-muted">
+                                        <span>Total / Paid:</span>
+                                        <span class="text-secondary">₹{$card.statement.amount} / <span class="text-success fw-semibold">₹{$card.statement.paid_amount}</span></span>
+                                    </div>
+                                {/if}
 
                                 <div class="d-flex align-items-center justify-content-between mb-2 small text-muted">
                                     <span>Minimum Due:</span>
@@ -247,9 +254,9 @@
                                 </div>
 
                                 <a href="/cred-app/public/payments/checkout?bill_id={$card.statement.id}" class="btn btn-sm btn-royal-primary w-100 rounded-pill shadow-sm">
-                                    <i class="bi bi-lightning-charge-fill me-1"></i> Pay Statement (₹{$card.statement.amount})
+                                    <i class="bi bi-lightning-charge-fill me-1"></i> Pay Statement (₹{$card.statement.remaining_due})
                                 </a>
-                            {elseif $card.has_statement && $card.statement.status == 'paid'}
+                            {elseif $card.has_statement && $card.statement.derived_code == 'paid'}
                                 <div class="d-flex align-items-center justify-content-between mb-2">
                                     <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill px-2 py-1 small">
                                         <i class="bi bi-check2-circle me-1"></i> Statement Cleared

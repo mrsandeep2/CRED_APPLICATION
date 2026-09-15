@@ -41,6 +41,7 @@ class BillController
         $today = new DateTime('today');
         $formattedBills = [];
         $pendingCount = 0;
+        $partiallyPaidCount = 0;
 
         foreach ($rawBills as $bill) {
             $rawNumber = $bill['card_number'] ?? '';
@@ -48,7 +49,16 @@ class BillController
             $maskedNumber = '•••• •••• •••• ' . ($last4 ?: '••••');
 
             $amountFloat = (float)$bill['amount'];
-            $minDueFloat = FinancialHelper::calculateMinimumDue($amountFloat);
+            $paidFloat = (float)($bill['paid_amount'] ?? 0.00);
+            $remainingFloat = max(0.00, round($amountFloat - $paidFloat, 2));
+            $minDueFloat = FinancialHelper::calculateMinimumDue($remainingFloat);
+
+            $derivedStatus = FinancialHelper::getDerivedStatementStatus(
+                $bill['status'],
+                $bill['due_date'],
+                $amountFloat,
+                $paidFloat
+            );
 
             $dueDateTimestamp = strtotime($bill['due_date']);
             $formattedDueDate = $dueDateTimestamp ? date('d M Y', $dueDateTimestamp) : $bill['due_date'];
@@ -57,25 +67,40 @@ class BillController
             $dueDateObj = new DateTime($bill['due_date']);
             $diffDays = (int)$today->diff($dueDateObj)->format('%r%a');
 
-            if ($bill['status'] === 'paid') {
+            if ($derivedStatus['code'] === 'paid') {
                 $urgency = 'paid';
                 $urgencyBadge = 'Paid';
                 $urgencyClass = 'success';
                 $urgencyText = 'Settled & Cleared';
+            } elseif ($derivedStatus['code'] === 'overdue') {
+                $pendingCount++;
+                $daysPast = abs($diffDays);
+                $urgency = 'overdue';
+                $urgencyBadge = 'Overdue';
+                $urgencyClass = 'danger';
+                $urgencyText = 'Overdue by ' . $daysPast . ($daysPast === 1 ? ' day' : ' days');
+            } elseif ($derivedStatus['code'] === 'partially_paid') {
+                $partiallyPaidCount++;
+                $pendingCount++;
+                if ($diffDays <= 3 && $diffDays >= 0) {
+                    $urgency = 'due_soon';
+                    $urgencyBadge = 'Partially Paid (Due Soon)';
+                    $urgencyClass = 'warning';
+                    $urgencyText = 'Due in ' . $diffDays . ' days';
+                } else {
+                    $urgency = 'partially_paid';
+                    $urgencyBadge = 'Partially Paid';
+                    $urgencyClass = 'info';
+                    $urgencyText = 'Remaining: ₹' . number_format($remainingFloat, 2);
+                }
             } else {
                 $pendingCount++;
-                if ($diffDays < 0) {
-                    $daysPast = abs($diffDays);
-                    $urgency = 'overdue';
-                    $urgencyBadge = 'Overdue';
-                    $urgencyClass = 'danger';
-                    $urgencyText = 'Overdue by ' . $daysPast . ($daysPast === 1 ? ' day' : ' days');
-                } elseif ($diffDays === 0) {
+                if ($diffDays === 0) {
                     $urgency = 'due_today';
                     $urgencyBadge = 'Due Today';
                     $urgencyClass = 'danger';
                     $urgencyText = 'Due Today!';
-                } elseif ($diffDays <= 3) {
+                } elseif ($diffDays <= 3 && $diffDays > 0) {
                     $urgency = 'due_soon';
                     $urgencyBadge = 'Due Soon';
                     $urgencyClass = 'warning';
@@ -88,29 +113,32 @@ class BillController
                 }
             }
 
-            // Generate deterministic payment transaction ref for receipt
-            $txnRef = 'TXN-CRED-' . str_pad((string)$bill['id'], 6, '0', STR_PAD_LEFT) . '-' . strtoupper(substr(md5($bill['id'] . ($bill['created_at'] ?? 'cred')), 0, 4));
-
             $formattedBills[] = [
-                'id' => (int)$bill['id'],
-                'card_id' => (int)$bill['card_id'],
-                'card' => $bill['bank_name'] . ($last4 ? ' (•••• ' . $last4 . ')' : ''),
-                'bank_name' => $bill['bank_name'],
-                'card_holder' => $bill['card_holder'],
-                'masked_card_number' => $maskedNumber,
-                'amount' => number_format($amountFloat, 2),
-                'raw_amount' => $amountFloat,
-                'min_due' => number_format($minDueFloat, 2),
-                'raw_min_due' => $minDueFloat,
-                'due_date' => $formattedDueDate,
-                'raw_due_date' => $bill['due_date'],
-                'status' => $bill['status'],
-                'urgency' => $urgency,
-                'urgency_badge' => $urgencyBadge,
-                'urgency_class' => $urgencyClass,
-                'urgency_text' => $urgencyText,
-                'txn_ref' => $txnRef,
-                'settlement_date' => date('d M Y, h:i A')
+                'id'                  => (int)$bill['id'],
+                'card_id'             => (int)$bill['card_id'],
+                'card'                => $bill['bank_name'] . ($last4 ? ' (•••• ' . $last4 . ')' : ''),
+                'bank_name'           => $bill['bank_name'],
+                'card_holder'         => $bill['card_holder'],
+                'masked_card_number'  => $maskedNumber,
+                'amount'              => number_format($amountFloat, 2),
+                'raw_amount'          => $amountFloat,
+                'paid_amount'         => number_format($paidFloat, 2),
+                'raw_paid_amount'     => $paidFloat,
+                'remaining_amount'    => number_format($remainingFloat, 2),
+                'raw_remaining_amount'=> $remainingFloat,
+                'min_due'             => number_format($minDueFloat, 2),
+                'raw_min_due'         => $minDueFloat,
+                'due_date'            => $formattedDueDate,
+                'raw_due_date'        => $bill['due_date'],
+                'status'              => $bill['status'],
+                'derived_code'        => $derivedStatus['code'],
+                'derived_label'       => $derivedStatus['label'],
+                'derived_badge'       => $derivedStatus['badge_class'],
+                'is_overdue'          => $derivedStatus['is_overdue'],
+                'urgency'             => $urgency,
+                'urgency_badge'       => $urgencyBadge,
+                'urgency_class'       => $urgencyClass,
+                'urgency_text'        => $urgencyText
             ];
         }
 
@@ -123,6 +151,7 @@ class BillController
         $this->smarty->assign('total_due', number_format($totalDue, 2));
         $this->smarty->assign('paid_bills', $paidCount);
         $this->smarty->assign('pending_bills', $pendingCount);
+        $this->smarty->assign('partially_paid_bills', $partiallyPaidCount);
         $this->smarty->assign('all_count', count($formattedBills));
         $this->smarty->assign('flash_message', $flashMessage);
         $this->smarty->assign('flash_type', $flashType);
@@ -184,10 +213,9 @@ class BillController
         $amount = trim($_POST['amount'] ?? '');
         $dueDate = trim($_POST['due_date'] ?? '');
 
-        // Preserve non-sensitive form values for redisplay on validation error
         $old = [
-            'card_id' => $cardId,
-            'amount' => $amount,
+            'card_id'  => $cardId,
+            'amount'   => $amount,
             'due_date' => $dueDate
         ];
 
@@ -285,4 +313,3 @@ class BillController
         exit;
     }
 }
-

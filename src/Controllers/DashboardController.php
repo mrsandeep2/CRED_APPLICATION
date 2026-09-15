@@ -35,7 +35,6 @@ class DashboardController
 
         $userId = (int)$_SESSION['user_id'];
         
-        // Fetch dynamic counts & totals strictly for authenticated user
         $userCards = $this->creditCard->findByUserId($userId);
         $cardCount = count($userCards);
         $pendingPerCard = $this->bill->getPendingTotalsPerCard($userId);
@@ -69,7 +68,16 @@ class DashboardController
             $maskedNumber = '•••• •••• •••• ' . ($last4 ?: '••••');
             
             $amountFloat = (float)$bill['amount'];
-            $minDueFloat = FinancialHelper::calculateMinimumDue($amountFloat);
+            $paidFloat = (float)($bill['paid_amount'] ?? 0.00);
+            $remainingFloat = max(0.00, round($amountFloat - $paidFloat, 2));
+            $minDueFloat = FinancialHelper::calculateMinimumDue($remainingFloat);
+
+            $derivedStatus = FinancialHelper::getDerivedStatementStatus(
+                $bill['status'],
+                $bill['due_date'],
+                $amountFloat,
+                $paidFloat
+            );
 
             $dueDateTimestamp = strtotime($bill['due_date']);
             $formattedDueDate = $dueDateTimestamp ? date('d M Y', $dueDateTimestamp) : $bill['due_date'];
@@ -78,25 +86,32 @@ class DashboardController
             $dueDateObj = new DateTime($bill['due_date']);
             $diffDays = (int)$today->diff($dueDateObj)->format('%r%a');
 
-            if ($bill['status'] === 'paid') {
+            if ($derivedStatus['code'] === 'paid') {
                 $urgency = 'paid';
                 $urgencyBadge = 'Paid';
                 $urgencyClass = 'success';
                 $urgencyText = 'Settled & Cleared';
+            } elseif ($derivedStatus['code'] === 'overdue') {
+                $pendingBillsCount++;
+                $daysPast = abs($diffDays);
+                $urgency = 'overdue';
+                $urgencyBadge = 'Overdue';
+                $urgencyClass = 'danger';
+                $urgencyText = 'Overdue by ' . $daysPast . ($daysPast === 1 ? ' day' : ' days');
+            } elseif ($derivedStatus['code'] === 'partially_paid') {
+                $pendingBillsCount++;
+                $urgency = 'partially_paid';
+                $urgencyBadge = 'Partially Paid';
+                $urgencyClass = 'info';
+                $urgencyText = 'Remaining: ₹' . number_format($remainingFloat, 2);
             } else {
                 $pendingBillsCount++;
-                if ($diffDays < 0) {
-                    $daysPast = abs($diffDays);
-                    $urgency = 'overdue';
-                    $urgencyBadge = 'Overdue';
-                    $urgencyClass = 'danger';
-                    $urgencyText = 'Overdue by ' . $daysPast . ($daysPast === 1 ? ' day' : ' days');
-                } elseif ($diffDays === 0) {
+                if ($diffDays === 0) {
                     $urgency = 'due_today';
                     $urgencyBadge = 'Due Today';
                     $urgencyClass = 'danger';
                     $urgencyText = 'Due Today!';
-                } elseif ($diffDays <= 3) {
+                } elseif ($diffDays <= 3 && $diffDays > 0) {
                     $urgency = 'due_soon';
                     $urgencyBadge = 'Due Soon';
                     $urgencyClass = 'warning';
@@ -112,24 +127,31 @@ class DashboardController
             $txnRef = 'TXN-CRED-' . str_pad((string)$bill['id'], 6, '0', STR_PAD_LEFT) . '-' . strtoupper(substr(md5($bill['id'] . ($bill['created_at'] ?? 'cred')), 0, 4));
 
             $formattedBills[] = [
-                'id' => (int)$bill['id'],
-                'card_id' => (int)$bill['card_id'],
-                'card' => $bill['bank_name'] . ($last4 ? ' (•••• ' . $last4 . ')' : ''),
-                'bank_name' => $bill['bank_name'],
-                'card_holder' => $bill['card_holder'],
-                'masked_card_number' => $maskedNumber,
-                'amount' => number_format($amountFloat, 2),
-                'raw_amount' => $amountFloat,
-                'min_due' => number_format($minDueFloat, 2),
-                'raw_min_due' => $minDueFloat,
-                'due_date' => $formattedDueDate,
-                'status' => $bill['status'],
-                'urgency' => $urgency,
-                'urgency_badge' => $urgencyBadge,
-                'urgency_class' => $urgencyClass,
-                'urgency_text' => $urgencyText,
-                'txn_ref' => $txnRef,
-                'settlement_date' => date('d M Y, h:i A')
+                'id'                  => (int)$bill['id'],
+                'card_id'             => (int)$bill['card_id'],
+                'card'                => $bill['bank_name'] . ($last4 ? ' (•••• ' . $last4 . ')' : ''),
+                'bank_name'           => $bill['bank_name'],
+                'card_holder'         => $bill['card_holder'],
+                'masked_card_number'  => $maskedNumber,
+                'amount'              => number_format($amountFloat, 2),
+                'raw_amount'          => $amountFloat,
+                'paid_amount'         => number_format($paidFloat, 2),
+                'raw_paid_amount'     => $paidFloat,
+                'remaining_amount'    => number_format($remainingFloat, 2),
+                'raw_remaining_amount'=> $remainingFloat,
+                'min_due'             => number_format($minDueFloat, 2),
+                'raw_min_due'         => $minDueFloat,
+                'due_date'            => $formattedDueDate,
+                'status'              => $bill['status'],
+                'derived_code'        => $derivedStatus['code'],
+                'derived_label'       => $derivedStatus['label'],
+                'derived_badge'       => $derivedStatus['badge_class'],
+                'urgency'             => $urgency,
+                'urgency_badge'       => $urgencyBadge,
+                'urgency_class'       => $urgencyClass,
+                'urgency_text'        => $urgencyText,
+                'txn_ref'             => $txnRef,
+                'settlement_date'     => date('d M Y, h:i A')
             ];
         }
 
@@ -153,4 +175,3 @@ class DashboardController
         $this->smarty->display('dashboard/index.tpl');
     }
 }
-

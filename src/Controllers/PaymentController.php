@@ -8,6 +8,7 @@ use Sandeepkumar\CredApp\Core\Database;
 use Sandeepkumar\CredApp\Models\Payment;
 use Sandeepkumar\CredApp\Models\Bill;
 use Sandeepkumar\CredApp\Models\CreditCard;
+use Sandeepkumar\CredApp\Helpers\FinancialHelper;
 
 class PaymentController
 {
@@ -28,7 +29,6 @@ class PaymentController
 
     /**
      * Generate a unique application-level transaction ID
-     * Example format: TXN-CRED-20260915-A1B2C3D4
      */
     public function generateTransactionId(): string
     {
@@ -39,7 +39,6 @@ class PaymentController
 
     /**
      * Generate a simulated gateway reference ID
-     * Example format: GW-CRED-9E8F7A6B5C4D
      */
     public function generateGatewayReference(): string
     {
@@ -47,11 +46,19 @@ class PaymentController
     }
 
     /**
-     * Validate bill and card ownership, consistency, and duplicate payment state
+     * Generate an idempotency key for checkout duplicate protection
+     */
+    public function generateIdempotencyKey(): string
+    {
+        return 'IDEMP-' . date('Ymd') . '-' . bin2hex(random_bytes(12));
+    }
+
+    /**
+     * Validate bill and card ownership and verify it is not already settled
      * 
      * @param int $billId
      * @param int $userId Strictly authenticated user ID
-     * @return array{bill: array, card: array}|null Verified data payload or null if invalid
+     * @return array{bill: array, card: array, remaining_due: float, min_due: float}|null Verified data payload or null
      */
     public function validateBillForPayment(int $billId, int $userId): ?array
     {
@@ -65,8 +72,12 @@ class PaymentController
             return null;
         }
 
-        // 2. Verify bill is not already settled/paid
-        if (($bill['status'] ?? '') === 'paid') {
+        $amount = (float)$bill['amount'];
+        $paidAmount = (float)($bill['paid_amount'] ?? 0.00);
+        $remainingDue = max(0.00, round($amount - $paidAmount, 2));
+
+        // 2. Verify bill is not already fully settled/paid
+        if (($bill['status'] ?? '') === 'paid' || $remainingDue <= 0.00) {
             return null;
         }
 
@@ -77,95 +88,18 @@ class PaymentController
             return null;
         }
 
-        // 4. Duplicate Payment Check: Ensure no successful payment already exists for this bill
-        $existingPayment = $this->payment->findSuccessfulByBillId($billId, $userId);
-        if ($existingPayment !== null) {
-            return null;
-        }
+        $minDue = FinancialHelper::calculateMinimumDue($remainingDue);
 
         return [
-            'bill' => $bill,
-            'card' => $card
+            'bill'          => $bill,
+            'card'          => $card,
+            'remaining_due' => $remainingDue,
+            'min_due'       => $minDue
         ];
     }
 
     /**
-     * Create an immutable payment record with atomic PDO transaction & bill status sync
-     * 
-     * @param int $userId
-     * @param int $billId
-     * @param string $paymentMethod One of ['upi', 'netbanking', 'debit_card', 'cred_pay']
-     * @param float $cashbackEarned
-     * @return array|null The newly created payment record or null on validation/processing failure
-     */
-    public function createPaymentRecord(
-        int $userId,
-        int $billId,
-        string $paymentMethod,
-        float $cashbackEarned = 0.00
-    ): ?array {
-        $validated = $this->validateBillForPayment($billId, $userId);
-        if ($validated === null) {
-            return null;
-        }
-
-        $validMethods = ['upi', 'netbanking', 'debit_card', 'cred_pay'];
-        if (!in_array($paymentMethod, $validMethods, true)) {
-            return null;
-        }
-
-        $bill = $validated['bill'];
-        $card = $validated['card'];
-        $authoritativeAmount = (float)$bill['amount'];
-        if ($authoritativeAmount <= 0) {
-            return null;
-        }
-
-        $transactionId = $this->generateTransactionId();
-        $gatewayRef = $this->generateGatewayReference();
-
-        $pdo = $this->database->getConnection();
-        $isNestedTxn = $pdo->inTransaction();
-
-        if (!$isNestedTxn) {
-            $pdo->beginTransaction();
-        }
-
-        try {
-            $paymentId = $this->payment->create(
-                $userId,
-                $billId,
-                (int)$card['id'],
-                $transactionId,
-                $authoritativeAmount,
-                $paymentMethod,
-                $gatewayRef,
-                'success',
-                $cashbackEarned
-            );
-
-            if ($paymentId <= 0) {
-                throw new \RuntimeException('Failed to insert payment record.');
-            }
-
-            $this->bill->markAsPaid($billId, $userId);
-
-            if (!$isNestedTxn) {
-                $pdo->commit();
-            }
-
-            return $this->payment->findById($paymentId, $userId);
-
-        } catch (\Throwable $e) {
-            if (!$isNestedTxn && $pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            return null;
-        }
-    }
-
-    /**
-     * Display the Interactive Payment Checkout Screen
+     * Display the Interactive Payment Checkout Screen with Flexible Payment Options
      */
     public function showCheckout(): void
     {
@@ -182,7 +116,7 @@ class PaymentController
         $billId = (int)($_GET['bill_id'] ?? 0);
 
         if ($billId <= 0) {
-            $_SESSION['flash_message'] = 'Please select a valid bill for payment.';
+            $_SESSION['flash_message'] = 'Please select a valid bill statement for payment.';
             $_SESSION['flash_type'] = 'warning';
             header('Location: /cred-app/public/bills');
             exit;
@@ -191,10 +125,9 @@ class PaymentController
         // Verify bill & card ownership
         $validated = $this->validateBillForPayment($billId, $userId);
         if ($validated === null) {
-            // Check if it's already paid to give specific feedback
             $existingBill = $this->bill->findById($billId);
-            if ($existingBill !== null && (int)$existingBill['user_id'] === $userId && $existingBill['status'] === 'paid') {
-                $_SESSION['flash_message'] = 'This bill statement has already been settled and paid.';
+            if ($existingBill !== null && (int)$existingBill['user_id'] === $userId && ($existingBill['status'] === 'paid' || (float)$existingBill['amount'] <= (float)$existingBill['paid_amount'])) {
+                $_SESSION['flash_message'] = 'This bill statement has already been fully settled and paid.';
                 $_SESSION['flash_type'] = 'info';
             } else {
                 $_SESSION['flash_message'] = 'The selected bill could not be found or does not belong to your account.';
@@ -206,6 +139,8 @@ class PaymentController
 
         $bill = $validated['bill'];
         $card = $validated['card'];
+        $remainingDue = $validated['remaining_due'];
+        $minDue = $validated['min_due'];
 
         // Mask card details
         $rawNumber = $card['card_number'] ?? '';
@@ -234,7 +169,8 @@ class PaymentController
             $urgencyClass = 'secondary';
         }
 
-        $estimatedCashback = min(100.00, max(5.00, round((float)$bill['amount'] * 0.01, 2)));
+        $estimatedCashback = Payment::calculateCashback($remainingDue, 'success');
+        $idempotencyKey = $this->generateIdempotencyKey();
 
         $flashMessage = $_SESSION['flash_message'] ?? null;
         $flashType = $_SESSION['flash_type'] ?? 'info';
@@ -242,18 +178,24 @@ class PaymentController
 
         $this->smarty->assign('year', date('Y'));
         $this->smarty->assign('bill', [
-            'id' => (int)$bill['id'],
-            'amount' => number_format((float)$bill['amount'], 2),
-            'raw_amount' => (float)$bill['amount'],
-            'due_date' => $formattedDueDate,
-            'raw_due_date' => $bill['due_date'],
-            'urgency_badge' => $urgencyBadge,
-            'urgency_class' => $urgencyClass,
-            'bank_name' => $card['bank_name'],
-            'card_holder' => $card['card_holder'],
-            'masked_card_number' => $maskedNumber,
-            'card_id' => (int)$card['id'],
-            'estimated_cashback' => number_format($estimatedCashback, 2)
+            'id'                  => (int)$bill['id'],
+            'total_amount'        => number_format((float)$bill['amount'], 2),
+            'paid_amount'         => number_format((float)($bill['paid_amount'] ?? 0), 2),
+            'remaining_due'       => number_format($remainingDue, 2),
+            'raw_remaining_due'   => $remainingDue,
+            'raw_amount'          => (float)$bill['amount'],
+            'min_due'             => number_format($minDue, 2),
+            'raw_min_due'         => $minDue,
+            'due_date'            => $formattedDueDate,
+            'raw_due_date'        => $bill['due_date'],
+            'urgency_badge'       => $urgencyBadge,
+            'urgency_class'       => $urgencyClass,
+            'bank_name'           => $card['bank_name'],
+            'card_holder'         => $card['card_holder'],
+            'masked_card_number'  => $maskedNumber,
+            'card_id'             => (int)$card['id'],
+            'estimated_cashback'  => number_format($estimatedCashback, 2),
+            'idempotency_key'     => $idempotencyKey
         ]);
 
         $this->smarty->assign('flash_message', $flashMessage);
@@ -263,7 +205,7 @@ class PaymentController
     }
 
     /**
-     * Handle Server-Side Payment Processing with Atomic PDO Transaction
+     * Handle Server-Side Payment Processing with Authoritative Validation & Allocations
      */
     public function processPayment(): void
     {
@@ -278,12 +220,28 @@ class PaymentController
 
         $userId = (int)$_SESSION['user_id'];
         $billId = (int)($_POST['bill_id'] ?? 0);
+        $paymentOption = trim($_POST['payment_option'] ?? 'full');
+        $customAmountInput = trim($_POST['custom_amount'] ?? '');
         $paymentMethod = trim($_POST['payment_method'] ?? '');
+        $idempotencyKey = trim($_POST['idempotency_key'] ?? '');
 
-        // 1. Authoritative Bill & Card Validation
+        // 1. Idempotency Check (Duplicate request protection)
+        if (!empty($idempotencyKey)) {
+            $existingPayment = $this->payment->findByIdempotencyKey($userId, $idempotencyKey);
+            if ($existingPayment !== null) {
+                if ($existingPayment['status'] === 'success') {
+                    $_SESSION['flash_message'] = 'Duplicate submission detected. Displaying existing verified payment.';
+                    $_SESSION['flash_type'] = 'info';
+                    header('Location: /cred-app/public/payments/success?txn=' . urlencode($existingPayment['transaction_id']));
+                    exit;
+                }
+            }
+        }
+
+        // 2. Authoritative Bill & Card Validation
         $validated = $this->validateBillForPayment($billId, $userId);
         if ($validated === null) {
-            $_SESSION['flash_message'] = 'Payment cannot be processed. Invalid bill or duplicate transaction.';
+            $_SESSION['flash_message'] = 'Payment cannot be processed. Invalid bill statement or already settled.';
             $_SESSION['flash_type'] = 'danger';
             header('Location: /cred-app/public/bills');
             exit;
@@ -291,8 +249,52 @@ class PaymentController
 
         $bill = $validated['bill'];
         $card = $validated['card'];
+        $remainingDue = $validated['remaining_due'];
+        $minDue = $validated['min_due'];
 
-        // 2. Validate Payment Method
+        // 3. Determine Payment Amount Server-Side
+        $payAmount = 0.00;
+        $isBelowMinDue = false;
+
+        if ($paymentOption === 'full') {
+            $payAmount = $remainingDue;
+        } elseif ($paymentOption === 'minimum') {
+            $payAmount = $minDue;
+        } elseif ($paymentOption === 'custom') {
+            if (!is_numeric($customAmountInput)) {
+                $_SESSION['flash_message'] = 'Please enter a valid numeric payment amount.';
+                $_SESSION['flash_type'] = 'danger';
+                header('Location: /cred-app/public/payments/checkout?bill_id=' . $billId);
+                exit;
+            }
+            $payAmount = round((float)$customAmountInput, 2);
+        } else {
+            $_SESSION['flash_message'] = 'Invalid payment option selected.';
+            $_SESSION['flash_type'] = 'warning';
+            header('Location: /cred-app/public/payments/checkout?bill_id=' . $billId);
+            exit;
+        }
+
+        // 4. Strict Financial Invariant Validation on Amount
+        if ($payAmount <= 0.00) {
+            $_SESSION['flash_message'] = 'Payment amount must be strictly greater than ₹0.00.';
+            $_SESSION['flash_type'] = 'danger';
+            header('Location: /cred-app/public/payments/checkout?bill_id=' . $billId);
+            exit;
+        }
+
+        if (round($payAmount, 2) > round($remainingDue, 2)) {
+            $_SESSION['flash_message'] = "Payment amount (₹" . number_format($payAmount, 2) . ") cannot exceed the statement remaining due of ₹" . number_format($remainingDue, 2) . ".";
+            $_SESSION['flash_type'] = 'danger';
+            header('Location: /cred-app/public/payments/checkout?bill_id=' . $billId);
+            exit;
+        }
+
+        if ($payAmount < $minDue && $payAmount < $remainingDue) {
+            $isBelowMinDue = true;
+        }
+
+        // 5. Validate Payment Method
         $validMethods = ['upi', 'netbanking', 'debit_card', 'cred_pay'];
         if (!in_array($paymentMethod, $validMethods, true)) {
             $_SESSION['flash_message'] = 'Please select a valid payment method.';
@@ -301,7 +303,7 @@ class PaymentController
             exit;
         }
 
-        // 3. Method-Specific Validation
+        // 6. Method-Specific Validation
         $validationError = null;
         if ($paymentMethod === 'upi') {
             $upiId = trim($_POST['upi_id'] ?? '');
@@ -334,10 +336,7 @@ class PaymentController
             exit;
         }
 
-        // 4. Authoritative Amount from Verified Bill
-        $authoritativeAmount = (float)$bill['amount'];
-
-        // 5. Check for simulated failure trigger (e.g. if UPI contains 'fail' or simulate_failure flag is passed)
+        // 7. Simulated Failure Handling
         $simulateFailure = (isset($_POST['simulate_failure']) && $_POST['simulate_failure'] === '1') || 
                            ($paymentMethod === 'upi' && str_contains(strtolower($_POST['upi_id'] ?? ''), 'fail'));
 
@@ -345,17 +344,17 @@ class PaymentController
             $transactionId = $this->generateTransactionId();
             $gatewayRef = $this->generateGatewayReference();
 
-            // Record failed transaction (bill remains pending)
             $this->payment->create(
                 $userId,
                 $billId,
                 (int)$card['id'],
                 $transactionId,
-                $authoritativeAmount,
+                $payAmount,
                 $paymentMethod,
                 $gatewayRef,
                 'failed',
-                0.00
+                0.00,
+                $idempotencyKey
             );
 
             $_SESSION['flash_message'] = 'Simulated payment was declined by the issuing gateway.';
@@ -365,21 +364,82 @@ class PaymentController
             exit;
         }
 
-        // 6. Execute Atomic Payment Creation & Bill Settlement
-        $cashbackEarned = Payment::calculateCashback($authoritativeAmount, 'success');
-        $paymentRecord = $this->createPaymentRecord($userId, $billId, $paymentMethod, $cashbackEarned);
+        // 8. Execute Atomic Settlement with Allocations
+        $cashbackEarned = Payment::calculateCashback($payAmount, 'success');
+        $allocations = [
+            [
+                'bill_id' => $billId,
+                'amount'  => $payAmount
+            ]
+        ];
 
-        if ($paymentRecord === null) {
-            $_SESSION['flash_message'] = 'Transaction processing error. Database integrity maintained.';
+        try {
+            $paymentRecord = $this->payment->processSettlementWithAllocations(
+                $userId,
+                (int)$card['id'],
+                $payAmount,
+                $paymentMethod,
+                $allocations,
+                $idempotencyKey,
+                $cashbackEarned
+            );
+
+            $successMsg = 'Payment verified and allocated!';
+            if ($isBelowMinDue) {
+                $successMsg .= ' (Note: Payment is below Minimum Due; remaining balance remains outstanding).';
+            }
+
+            $_SESSION['flash_message'] = $successMsg;
+            $_SESSION['flash_type'] = 'success';
+
+            header('Location: /cred-app/public/payments/success?txn=' . urlencode($paymentRecord['transaction_id']));
+            exit;
+
+        } catch (\Throwable $e) {
+            $_SESSION['flash_message'] = 'Transaction settlement failed: ' . $e->getMessage();
             $_SESSION['flash_type'] = 'danger';
             header('Location: /cred-app/public/payments/checkout?bill_id=' . $billId);
             exit;
         }
+    }
 
-        $_SESSION['flash_message'] = 'Payment verified! Bill marked as settled and cleared.';
-        $_SESSION['flash_type'] = 'success';
+    /**
+     * Handle Non-Destructive Payment Reversal Action
+     */
+    public function reversePayment(): void
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
 
-        header('Location: /cred-app/public/payments/success?txn=' . urlencode($paymentRecord['transaction_id']));
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: /cred-app/public/login');
+            exit;
+        }
+
+        $userId = (int)$_SESSION['user_id'];
+        $paymentId = (int)($_POST['payment_id'] ?? 0);
+        $reason = trim($_POST['reason'] ?? 'User simulated merchant reversal');
+
+        if ($paymentId <= 0) {
+            $_SESSION['flash_message'] = 'Invalid payment record selected for reversal.';
+            $_SESSION['flash_type'] = 'danger';
+            header('Location: /cred-app/public/payments/history');
+            exit;
+        }
+
+        try {
+            $this->payment->reversePayment($paymentId, $userId, 'reversed', $reason);
+
+            $_SESSION['flash_message'] = 'Payment successfully reversed. Statement balance and card revolving credit restored.';
+            $_SESSION['flash_type'] = 'success';
+
+        } catch (\Throwable $e) {
+            $_SESSION['flash_message'] = 'Payment reversal failed: ' . $e->getMessage();
+            $_SESSION['flash_type'] = 'danger';
+        }
+
+        header('Location: /cred-app/public/payments/history');
         exit;
     }
 
@@ -416,10 +476,10 @@ class PaymentController
         $maskedNumber = '•••• •••• •••• ' . ($last4 ?: '••••');
 
         $methodLabels = [
-            'upi' => 'UPI (Unified Payments Interface)',
+            'upi'        => 'UPI (Unified Payments Interface)',
             'netbanking' => 'Net Banking',
             'debit_card' => 'Debit Card',
-            'cred_pay' => 'CRED Pay Instant'
+            'cred_pay'   => 'CRED Pay Instant'
         ];
 
         $paidTimestamp = strtotime($payment['created_at']);
@@ -431,19 +491,20 @@ class PaymentController
 
         $this->smarty->assign('year', date('Y'));
         $this->smarty->assign('payment', [
-            'id' => (int)$payment['id'],
-            'transaction_id' => $payment['transaction_id'],
-            'gateway_reference' => $payment['gateway_reference'],
-            'amount' => number_format((float)$payment['amount'], 2),
-            'payment_method' => $payment['payment_method'],
+            'id'                   => (int)$payment['id'],
+            'transaction_id'       => $payment['transaction_id'],
+            'gateway_reference'    => $payment['gateway_reference'],
+            'amount'               => number_format((float)$payment['amount'], 2),
+            'payment_method'       => $payment['payment_method'],
             'payment_method_label' => $methodLabels[$payment['payment_method']] ?? strtoupper($payment['payment_method']),
-            'cashback_earned' => number_format((float)$payment['cashback_earned'], 2),
-            'reward_points' => (int)((float)$payment['amount'] * 10),
-            'paid_at' => $formattedPaidDate,
-            'bank_name' => $payment['bank_name'],
-            'card_holder' => $payment['card_holder'],
-            'masked_card' => $maskedNumber,
-            'bill_id' => (int)$payment['bill_id']
+            'cashback_earned'      => number_format((float)$payment['cashback_earned'], 2),
+            'reward_points'        => (int)((float)$payment['amount'] * 10),
+            'paid_at'              => $formattedPaidDate,
+            'bank_name'            => $payment['bank_name'],
+            'card_holder'          => $payment['card_holder'],
+            'masked_card'          => $maskedNumber,
+            'allocations'          => $payment['allocations'] ?? [],
+            'events'               => $payment['events'] ?? []
         ]);
 
         $this->smarty->assign('flash_message', $flashMessage);
@@ -486,11 +547,10 @@ class PaymentController
 
         $this->smarty->assign('year', date('Y'));
         $this->smarty->assign('payment', [
-            'transaction_id' => $payment['transaction_id'],
+            'transaction_id'    => $payment['transaction_id'],
             'gateway_reference' => $payment['gateway_reference'],
-            'amount' => number_format((float)$payment['amount'], 2),
-            'bill_id' => (int)$payment['bill_id'],
-            'bank_name' => $payment['bank_name'] ?? 'Credit Card'
+            'amount'            => number_format((float)$payment['amount'], 2),
+            'bank_name'         => $payment['bank_name'] ?? 'Credit Card'
         ]);
 
         $this->smarty->assign('flash_message', $flashMessage);
@@ -517,29 +577,33 @@ class PaymentController
         $rawPayments = $this->payment->findByUserId($userId);
 
         $methodLabels = [
-            'upi' => 'UPI',
+            'upi'        => 'UPI',
             'netbanking' => 'Net Banking',
             'debit_card' => 'Debit Card',
-            'cred_pay' => 'CRED Pay'
+            'cred_pay'   => 'CRED Pay'
         ];
 
         $methodIcons = [
-            'upi' => 'bi-qr-code-scan text-warning',
+            'upi'        => 'bi-qr-code-scan text-warning',
             'netbanking' => 'bi-bank text-primary',
             'debit_card' => 'bi-credit-card-2-back text-success',
-            'cred_pay' => 'bi-lightning-charge-fill text-warning'
+            'cred_pay'   => 'bi-lightning-charge-fill text-warning'
         ];
 
         $statusLabels = [
-            'success' => 'Success',
+            'success'    => 'Success',
             'processing' => 'Processing',
-            'failed' => 'Failed'
+            'failed'     => 'Failed',
+            'reversed'   => 'Reversed',
+            'refunded'   => 'Refunded'
         ];
 
         $statusBadgeClasses = [
-            'success' => 'bg-success-subtle text-success-emphasis border border-success-subtle',
+            'success'    => 'bg-success-subtle text-success-emphasis border border-success-subtle',
             'processing' => 'bg-warning-subtle text-warning-emphasis border border-warning-subtle',
-            'failed' => 'bg-danger-subtle text-danger border border-danger-subtle'
+            'failed'     => 'bg-danger-subtle text-danger border border-danger-subtle',
+            'reversed'   => 'bg-secondary text-white border border-secondary',
+            'refunded'   => 'bg-info-subtle text-info-emphasis border border-info-subtle'
         ];
 
         $formattedPayments = [];
@@ -548,6 +612,7 @@ class PaymentController
         $successCount = 0;
         $processingCount = 0;
         $failedCount = 0;
+        $reversedCount = 0;
 
         foreach ($rawPayments as $p) {
             $amountFloat = (float)$p['amount'];
@@ -562,6 +627,8 @@ class PaymentController
                 $processingCount++;
             } elseif ($status === 'failed') {
                 $failedCount++;
+            } elseif ($status === 'reversed' || $status === 'refunded') {
+                $reversedCount++;
             }
 
             $rawCardNumber = $p['card_number'] ?? '';
@@ -572,27 +639,29 @@ class PaymentController
             $formattedPaidDate = $paidTimestamp ? date('d M Y, h:i A', $paidTimestamp) : $p['created_at'];
 
             $formattedPayments[] = [
-                'id' => (int)$p['id'],
-                'user_id' => (int)$p['user_id'],
-                'bill_id' => (int)$p['bill_id'],
-                'card_id' => (int)$p['card_id'],
-                'transaction_id' => $p['transaction_id'],
-                'amount' => number_format($amountFloat, 2),
-                'raw_amount' => $amountFloat,
-                'payment_method' => $p['payment_method'],
+                'id'                   => (int)$p['id'],
+                'user_id'              => (int)$p['user_id'],
+                'card_id'              => (int)$p['card_id'],
+                'transaction_id'       => $p['transaction_id'],
+                'idempotency_key'      => $p['idempotency_key'],
+                'amount'               => number_format($amountFloat, 2),
+                'raw_amount'           => $amountFloat,
+                'payment_method'       => $p['payment_method'],
                 'payment_method_label' => $methodLabels[$p['payment_method']] ?? strtoupper($p['payment_method']),
-                'payment_method_icon' => $methodIcons[$p['payment_method']] ?? 'bi-credit-card',
-                'gateway_reference' => $p['gateway_reference'],
-                'status' => $status,
-                'status_label' => $statusLabels[$status] ?? ucfirst($status),
-                'status_badge_class' => $statusBadgeClasses[$status] ?? 'bg-secondary-subtle text-secondary',
-                'cashback_earned' => number_format($cashbackFloat, 2),
-                'reward_points' => (int)($amountFloat * 10),
-                'paid_at' => $formattedPaidDate,
-                'bank_name' => $p['bank_name'] ?? 'Card Statement',
-                'card_holder' => $p['card_holder'] ?? 'Account Holder',
-                'masked_card' => $maskedCard,
-                'bill_due_date' => !empty($p['bill_due_date']) ? date('d M Y', strtotime($p['bill_due_date'])) : 'Archived'
+                'payment_method_icon'  => $methodIcons[$p['payment_method']] ?? 'bi-credit-card',
+                'gateway_reference'    => $p['gateway_reference'],
+                'status'               => $status,
+                'status_label'         => $statusLabels[$status] ?? ucfirst($status),
+                'status_badge_class'   => $statusBadgeClasses[$status] ?? 'bg-secondary-subtle text-secondary',
+                'can_reverse'          => ($status === 'success'),
+                'cashback_earned'      => number_format($cashbackFloat, 2),
+                'reward_points'        => (int)($amountFloat * 10),
+                'paid_at'              => $formattedPaidDate,
+                'bank_name'            => $p['bank_name'] ?? 'Card Statement',
+                'card_holder'          => $p['card_holder'] ?? 'Account Holder',
+                'masked_card'          => $maskedCard,
+                'allocations'          => $p['allocations'] ?? [],
+                'events'               => $p['events'] ?? []
             ];
         }
 
@@ -606,6 +675,7 @@ class PaymentController
         $this->smarty->assign('success_count', $successCount);
         $this->smarty->assign('processing_count', $processingCount);
         $this->smarty->assign('failed_count', $failedCount);
+        $this->smarty->assign('reversed_count', $reversedCount);
         $this->smarty->assign('total_settled_amount', number_format($totalSettledAmount, 2));
         $this->smarty->assign('total_cashback_earned', number_format($totalCashbackEarned, 2));
         $this->smarty->assign('flash_message', $flashMessage);
@@ -630,7 +700,6 @@ class PaymentController
 
         $userId = (int)$_SESSION['user_id'];
 
-        // Aggregate analytics directly from Payment model
         $totalPaid = $this->payment->getTotalPaidByUserId($userId);
         $monthlySpend = $this->payment->getMonthlySpend($userId);
         $successfulCount = $this->payment->getPaymentCountByUserId($userId);
@@ -640,11 +709,9 @@ class PaymentController
         $monthlyTrend = $this->payment->getMonthlyPaymentTrend($userId);
         $rawRecentPayments = $this->payment->getRecentPayments($userId, 6);
 
-        // Average transaction value & reward points
         $avgTxnValue = $successfulCount > 0 ? ($totalPaid / $successfulCount) : 0.00;
         $totalRewardPoints = (int)($totalPaid * 10);
 
-        // Find max monthly amount for proportional CSS bar chart scaling
         $maxTrendAmount = 0.00;
         foreach ($monthlyTrend as $m) {
             if ($m['amount'] > $maxTrendAmount) {
@@ -653,11 +720,9 @@ class PaymentController
         }
         $scaleMax = $maxTrendAmount > 0 ? $maxTrendAmount : 1.0;
 
-        // Augment trend items with percentage height for chart
         $trendChart = [];
         foreach ($monthlyTrend as $m) {
             $percentHeight = $maxTrendAmount > 0 ? round(($m['amount'] / $scaleMax) * 100) : 0;
-            // minimum visual bar height if non-zero
             if ($m['amount'] > 0 && $percentHeight < 12) {
                 $percentHeight = 12;
             }
@@ -666,19 +731,18 @@ class PaymentController
             ]);
         }
 
-        // Format recent payments
         $methodLabels = [
-            'upi' => 'UPI',
+            'upi'        => 'UPI',
             'netbanking' => 'Net Banking',
             'debit_card' => 'Debit Card',
-            'cred_pay' => 'CRED Pay'
+            'cred_pay'   => 'CRED Pay'
         ];
 
         $methodIcons = [
-            'upi' => 'bi-qr-code-scan text-warning',
+            'upi'        => 'bi-qr-code-scan text-warning',
             'netbanking' => 'bi-bank text-primary',
             'debit_card' => 'bi-credit-card-2-back text-success',
-            'cred_pay' => 'bi-lightning-charge-fill text-warning'
+            'cred_pay'   => 'bi-lightning-charge-fill text-warning'
         ];
 
         $formattedRecent = [];
@@ -691,18 +755,18 @@ class PaymentController
             $paidDate = $timestamp ? date('d M Y, h:i A', $timestamp) : $p['created_at'];
 
             $formattedRecent[] = [
-                'id' => (int)$p['id'],
-                'transaction_id' => $p['transaction_id'],
-                'gateway_reference' => $p['gateway_reference'],
-                'amount' => number_format((float)$p['amount'], 2),
-                'cashback_earned' => number_format((float)$p['cashback_earned'], 2),
-                'payment_method' => $p['payment_method'],
+                'id'                   => (int)$p['id'],
+                'transaction_id'       => $p['transaction_id'],
+                'gateway_reference'    => $p['gateway_reference'],
+                'amount'               => number_format((float)$p['amount'], 2),
+                'cashback_earned'      => number_format((float)$p['cashback_earned'], 2),
+                'payment_method'       => $p['payment_method'],
                 'payment_method_label' => $methodLabels[$p['payment_method']] ?? strtoupper($p['payment_method']),
-                'payment_method_icon' => $methodIcons[$p['payment_method']] ?? 'bi-credit-card',
-                'bank_name' => $p['bank_name'] ?? 'Card Account',
-                'card_holder' => $p['card_holder'] ?? 'Account Holder',
-                'masked_card' => $maskedCard,
-                'paid_at' => $paidDate
+                'payment_method_icon'  => $methodIcons[$p['payment_method']] ?? 'bi-credit-card',
+                'bank_name'            => $p['bank_name'] ?? 'Card Account',
+                'card_holder'          => $p['card_holder'] ?? 'Account Holder',
+                'masked_card'          => $maskedCard,
+                'paid_at'              => $paidDate
             ];
         }
 

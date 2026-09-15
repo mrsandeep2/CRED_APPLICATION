@@ -16,7 +16,7 @@
         <span class="text-muted opacity-50">/</span>
         <a href="/cred-app/public/bills" class="text-decoration-none text-muted small hover-gold">Bills</a>
         <span class="text-muted opacity-50">/</span>
-        <span class="fw-bold text-dark">Payment History</span>
+        <span class="fw-bold text-dark">Transaction Ledger</span>
     </div>
 
     <div class="d-flex align-items-center gap-2">
@@ -78,10 +78,10 @@
         <div class="card cred-card h-100 p-4 shadow-sm" style="background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);">
             <div class="d-flex align-items-center justify-content-between">
                 <div>
-                    <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.8px;">Ledger Records</span>
+                    <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.8px;">Audited Ledger Records</span>
                     <h2 class="fw-bold my-2 text-dark">{$all_count|default:0} <span class="fs-6 fw-normal text-muted">Transactions</span></h2>
                     <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle rounded-pill px-3 py-1 small">
-                        <i class="bi bi-shield-check me-1"></i> Immutable Audit
+                        <i class="bi bi-shield-check me-1"></i> Audited Transaction Ledger
                     </span>
                 </div>
                 <div class="d-flex align-items-center justify-content-center rounded-4" style="width: 56px; height: 56px; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border: 1px solid #3b82f6; color: #1e3a8a; font-size: 1.6rem; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);">
@@ -99,9 +99,9 @@
         <div>
             <h4 class="fw-bold mb-1 d-flex align-items-center gap-2">
                 <i class="bi bi-journal-check text-warning"></i>
-                <span>Payment History & Transaction Ledger</span>
+                <span>Audited Transaction Ledger</span>
             </h4>
-            <p class="text-muted small mb-0">Permanent financial records of all processed statement settlements.</p>
+            <p class="text-muted small mb-0">Append-only state transition records of all statement settlements & allocations.</p>
         </div>
 
         <div class="d-flex flex-wrap align-items-center gap-2">
@@ -119,6 +119,11 @@
                 <button class="btn btn-sm rounded-pill px-3 fw-semibold hist-filter-btn text-success" data-status="success" onclick="setHistoryFilter('success', this)">
                     Success <span class="badge bg-success ms-1">{$success_count|default:0}</span>
                 </button>
+                {if $reversed_count > 0}
+                    <button class="btn btn-sm rounded-pill px-3 fw-semibold hist-filter-btn text-secondary" data-status="reversed" onclick="setHistoryFilter('reversed', this)">
+                        Reversed <span class="badge bg-secondary ms-1">{$reversed_count|default:0}</span>
+                    </button>
+                {/if}
                 {if $failed_count > 0}
                     <button class="btn btn-sm rounded-pill px-3 fw-semibold hist-filter-btn text-danger" data-status="failed" onclick="setHistoryFilter('failed', this)">
                         Failed <span class="badge bg-danger ms-1">{$failed_count|default:0}</span>
@@ -135,7 +140,7 @@
                     <thead class="table-light" style="background-color: #faf8f5;">
                         <tr class="text-uppercase small fw-bold text-muted">
                             <th class="ps-4 py-3">Transaction Info</th>
-                            <th class="py-3">Card / Bill</th>
+                            <th class="py-3">Card / Account</th>
                             <th class="py-3">Amount</th>
                             <th class="py-3">Method</th>
                             <th class="py-3">Status</th>
@@ -161,7 +166,7 @@
                                 </div>
                             </td>
 
-                            <!-- Card / Bill -->
+                            <!-- Card / Account -->
                             <td class="py-3">
                                 <div class="fw-semibold text-dark">{$p.bank_name}</div>
                                 <small class="text-muted">{$p.masked_card} &bull; {$p.card_holder}</small>
@@ -169,8 +174,8 @@
 
                             <!-- Amount & Cashback -->
                             <td class="py-3">
-                                <span class="fw-bold text-dark fs-6">₹{$p.amount}</span>
-                                {if (float)$p.cashback_earned > 0}
+                                <span class="fw-bold text-dark fs-6 {if $p.status == 'reversed'}text-decoration-line-through text-muted{/if}">₹{$p.amount}</span>
+                                {if (float)$p.cashback_earned > 0 && $p.status == 'success'}
                                     <div class="text-success small fw-semibold">
                                         <i class="bi bi-gift-fill me-1"></i>+₹{$p.cashback_earned} Cashback
                                     </div>
@@ -191,23 +196,38 @@
                                         <i class="bi bi-check-circle-fill me-1"></i> Success
                                     {elseif $p.status == 'failed'}
                                         <i class="bi bi-x-circle-fill me-1"></i> Failed
+                                    {elseif $p.status == 'reversed'}
+                                        <i class="bi bi-arrow-counterclockwise me-1"></i> Reversed
+                                    {elseif $p.status == 'refunded'}
+                                        <i class="bi bi-arrow-return-left me-1"></i> Refunded
                                     {else}
                                         <i class="bi bi-hourglass-split me-1"></i> Processing
                                     {/if}
                                 </span>
                             </td>
 
-                            <!-- Actions: Details Modal -->
+                            <!-- Actions: Details Modal & Reversal -->
                             <td class="pe-4 py-3 text-end">
-                                <button class="btn btn-sm btn-royal-outline rounded-pill px-3" 
-                                        data-bs-toggle="modal" 
-                                        data-bs-target="#paymentDetailModal{$p.id}">
-                                    <i class="bi bi-receipt"></i> Details
-                                </button>
+                                <div class="d-inline-flex gap-2">
+                                    <button class="btn btn-sm btn-royal-outline rounded-pill px-3" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#paymentDetailModal{$p.id}">
+                                        <i class="bi bi-receipt"></i> Details
+                                    </button>
+
+                                    {if $p.can_reverse}
+                                        <button class="btn btn-sm btn-outline-danger rounded-pill px-2"
+                                                title="Simulate Payment Reversal / Refund"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#reverseModal{$p.id}">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Reverse
+                                        </button>
+                                    {/if}
+                                </div>
 
                                 <!-- Transaction Detail Modal -->
                                 <div class="modal fade text-start" id="paymentDetailModal{$p.id}" tabindex="-1" aria-labelledby="detailLabel{$p.id}" aria-hidden="true">
-                                    <div class="modal-dialog modal-dialog-centered">
+                                    <div class="modal-dialog modal-dialog-centered modal-lg">
                                         <div class="modal-content rounded-4 border-0 shadow-lg">
                                             
                                             <!-- Modal Header -->
@@ -215,10 +235,10 @@
                                                 <button type="button" class="btn-close position-absolute end-0 top-0 m-3" data-bs-dismiss="modal" aria-label="Close"></button>
                                                 <div class="d-inline-flex align-items-center justify-content-center rounded-circle mb-2" 
                                                      style="width: 58px; height: 58px; background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border: 1.5px solid #10b981; color: #047857; font-size: 1.8rem; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25);">
-                                                    <i class="bi bi-shield-check"></i>
+                                                    <i class="bi bi-journal-check"></i>
                                                 </div>
-                                                <h5 class="modal-title fw-bold text-dark" id="detailLabel{$p.id}">Official Transaction Receipt</h5>
-                                                <p class="text-muted small mb-0">CRED Verified Payment Record</p>
+                                                <h5 class="modal-title fw-bold text-dark" id="detailLabel{$p.id}">Audited Transaction Record</h5>
+                                                <p class="text-muted small mb-0">CRED Verified Financial Ledger</p>
                                             </div>
 
                                             <!-- Modal Body -->
@@ -226,10 +246,10 @@
                                                 
                                                 <!-- Amount Banner -->
                                                 <div class="p-3 rounded-4 mb-3 text-center" style="background: linear-gradient(135deg, #f8fafc 0%, #fef3c7 100%); border: 1px solid rgba(217, 119, 6, 0.2);">
-                                                    <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.8px;">Settled Amount</span>
+                                                    <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.8px;">Transaction Amount</span>
                                                     <h2 class="fw-bold my-1 text-dark">₹{$p.amount}</h2>
                                                     <span class="badge {$p.status_badge_class} rounded-pill px-3 py-1 small">
-                                                        <i class="bi bi-check-all me-1"></i> {$p.status_label} &bull; 100% Verified
+                                                        <i class="bi bi-check-all me-1"></i> {$p.status_label} &bull; Audited
                                                     </span>
                                                 </div>
 
@@ -251,29 +271,72 @@
                                                         <span class="text-muted">Card Account</span>
                                                         <span class="fw-semibold text-dark">{$p.bank_name} ({$p.masked_card})</span>
                                                     </div>
-                                                    <div class="d-flex justify-content-between py-1 border-bottom small">
-                                                        <span class="text-muted">Card Holder</span>
-                                                        <span class="fw-semibold text-dark">{$p.card_holder}</span>
-                                                    </div>
-                                                    <div class="d-flex justify-content-between py-1 border-bottom small">
-                                                        <span class="text-muted">Cashback Credited</span>
-                                                        <span class="fw-bold text-success">₹{$p.cashback_earned}</span>
-                                                    </div>
                                                     <div class="d-flex justify-content-between py-1 small">
                                                         <span class="text-muted">Timestamp</span>
                                                         <span class="fw-semibold text-dark">{$p.paid_at}</span>
                                                     </div>
                                                 </div>
 
+                                                <!-- Allocations Section -->
+                                                {if !empty($p.allocations)}
+                                                    <div class="mb-3">
+                                                        <h6 class="fw-bold text-dark mb-2"><i class="bi bi-diagram-3-fill text-warning me-1"></i> Statement Allocations</h6>
+                                                        <div class="table-responsive">
+                                                            <table class="table table-sm table-bordered small mb-0">
+                                                                <thead class="table-light">
+                                                                    <tr>
+                                                                        <th>Statement #</th>
+                                                                        <th>Allocated Amount</th>
+                                                                        <th>Allocation Status</th>
+                                                                        <th>Statement Due Date</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {foreach $p.allocations as $alloc}
+                                                                        <tr>
+                                                                            <td class="font-monospace">#{$alloc.bill_id}</td>
+                                                                            <td class="fw-bold text-success">₹{$alloc.allocated_amount|number_format:2}</td>
+                                                                            <td>
+                                                                                <span class="badge {if $alloc.status == 'allocated'}bg-success-subtle text-success{else}bg-secondary-subtle text-secondary{/if} rounded-pill">
+                                                                                    {$alloc.status|capitalize}
+                                                                                </span>
+                                                                            </td>
+                                                                            <td>{$alloc.bill_due_date|default:'N/A'}</td>
+                                                                        </tr>
+                                                                    {/foreach}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                {/if}
+
+                                                <!-- Event Transition Trail -->
+                                                {if !empty($p.events)}
+                                                    <div class="mb-3">
+                                                        <h6 class="fw-bold text-dark mb-2"><i class="bi bi-clock-history text-primary me-1"></i> Append-Only State Transition Trail</h6>
+                                                        <div class="p-3 bg-light rounded-3 border small">
+                                                            {foreach $p.events as $ev}
+                                                                <div class="d-flex align-items-center justify-content-between py-1 border-bottom">
+                                                                    <div>
+                                                                        <span class="badge bg-dark text-white rounded-pill me-2">{$ev.event_type|upper}</span>
+                                                                        <span class="text-dark">{$ev.notes|default:'State transition'}</span>
+                                                                    </div>
+                                                                    <div class="text-muted font-monospace small">{$ev.created_at}</div>
+                                                                </div>
+                                                            {/foreach}
+                                                        </div>
+                                                    </div>
+                                                {/if}
+
                                                 <div class="text-center small text-muted">
-                                                    <i class="bi bi-shield-lock-fill text-success me-1"></i> Recorded in permanent encrypted ledger.
+                                                    <i class="bi bi-shield-lock-fill text-success me-1"></i> Retained in append-only financial audit records.
                                                 </div>
                                             </div>
 
                                             <!-- Modal Footer -->
                                             <div class="modal-footer border-0 pt-0 justify-content-center gap-2 pb-4">
                                                 <button type="button" class="btn btn-royal-outline rounded-pill px-4 btn-sm" onclick="window.print();">
-                                                    <i class="bi bi-printer"></i> Print Receipt
+                                                    <i class="bi bi-printer"></i> Print Record
                                                 </button>
                                                 <button type="button" class="btn btn-secondary rounded-pill px-4 btn-sm" data-bs-dismiss="modal">
                                                     Close
@@ -283,6 +346,49 @@
                                         </div>
                                     </div>
                                 </div>
+
+                                <!-- Reversal Confirmation Modal -->
+                                {if $p.can_reverse}
+                                    <div class="modal fade text-start" id="reverseModal{$p.id}" tabindex="-1" aria-hidden="true">
+                                        <div class="modal-dialog modal-dialog-centered">
+                                            <div class="modal-content rounded-4 border-0 shadow-lg">
+                                                <div class="modal-header border-0 pb-0">
+                                                    <h5 class="modal-title fw-bold text-danger">
+                                                        <i class="bi bi-exclamation-octagon-fill me-1"></i> Confirm Payment Reversal
+                                                    </h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                </div>
+                                                <div class="modal-body p-4">
+                                                    <p class="text-dark">
+                                                        Are you sure you want to simulate a reversal / refund for transaction <strong class="font-monospace">{$p.transaction_id}</strong> (<strong>₹{$p.amount}</strong>)?
+                                                    </p>
+                                                    <div class="alert alert-warning small mb-3">
+                                                        <i class="bi bi-info-circle-fill me-1"></i>
+                                                        <strong>Financial Impact:</strong>
+                                                        <ul class="mb-0 ps-3 mt-1">
+                                                            <li>The transaction is marked as <strong>REVERSED</strong> (never deleted).</li>
+                                                            <li>An immutable event is appended to <code>payment_events</code>.</li>
+                                                            <li>The allocated statement balance and card revolving credit will be restored.</li>
+                                                        </ul>
+                                                    </div>
+
+                                                    <form method="POST" action="/cred-app/public/payments/reverse">
+                                                        <input type="hidden" name="payment_id" value="{$p.id}">
+                                                        <div class="mb-3">
+                                                            <label class="form-label small fw-bold text-muted">Reason for Reversal</label>
+                                                            <input type="text" class="form-control form-control-sm" name="reason" value="Simulated user refund / merchant reversal">
+                                                        </div>
+                                                        <div class="d-flex justify-content-end gap-2">
+                                                            <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+                                                            <button type="submit" class="btn btn-sm btn-danger rounded-pill px-4 fw-bold">Execute Reversal</button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {/if}
+
                             </td>
 
                         </tr>
@@ -308,7 +414,7 @@
                 </div>
                 <h4 class="fw-bold mb-2 text-dark">No Payment Transactions Yet</h4>
                 <p class="text-muted mb-4" style="max-width: 440px; margin: 0 auto;">
-                    When you settle credit card statements through the checkout flow, permanent immutable transaction records and receipts will appear here.
+                    When you settle credit card statements through the checkout flow, permanent audited transaction records and allocations will appear here.
                 </p>
                 <div class="d-flex align-items-center justify-content-center gap-2">
                     <a href="/cred-app/public/bills" class="btn btn-royal-primary">

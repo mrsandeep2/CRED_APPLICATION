@@ -21,18 +21,18 @@
                 </div>
 
                 <h2 class="fw-bold text-dark mb-1">
-                    Payment Completed Successfully
+                    Payment Allocated & Settled
                 </h2>
                 <p class="text-muted small mb-4">
-                    Your credit card statement has been verified, cleared, and permanently logged in your ledger.
+                    Your payment transaction has been verified, allocated to your statement, and recorded in your ledger.
                 </p>
 
                 <!-- Amount Banner -->
                 <div class="p-4 rounded-4 mb-4" style="background: linear-gradient(135deg, #f8fafc 0%, #fef3c7 100%); border: 1.5px solid rgba(217, 119, 6, 0.25);">
-                    <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.8px;">Amount Settled</span>
+                    <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.8px;">Amount Paid & Allocated</span>
                     <h1 class="display-6 fw-bold my-1 text-dark">₹{$payment.amount}</h1>
                     <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill px-3 py-1 small fw-semibold">
-                        <i class="bi bi-check-all me-1"></i> Instant Clearance &bull; 100% On-Time
+                        <i class="bi bi-check-all me-1"></i> Verified &bull; Statement Balance Updated
                     </span>
                 </div>
 
@@ -45,7 +45,7 @@
                         </div>
                         <div>
                             <div class="fw-bold text-dark fs-6">₹{$payment.cashback_earned} Cashback &bull; {$payment.reward_points} CRED Coins</div>
-                            <small class="text-muted">Rewards successfully credited to your member account.</small>
+                            <small class="text-muted">Rewards credited to your member account.</small>
                         </div>
                     </div>
                     <span class="badge bg-white text-warning-emphasis border rounded-pill px-3 py-2 fw-bold shadow-sm">
@@ -103,9 +103,9 @@
                         <span>View All Bills</span>
                     </a>
 
-                    <a href="/cred-app/public/" class="btn btn-outline-secondary rounded-pill px-4">
-                        <i class="bi bi-house-door"></i>
-                        <span>Dashboard</span>
+                    <a href="/cred-app/public/payments/history" class="btn btn-outline-warning text-dark rounded-pill px-4" style="border-color: #f59e0b;">
+                        <i class="bi bi-journal-text"></i>
+                        <span>Transaction Ledger</span>
                     </a>
                 </div>
 

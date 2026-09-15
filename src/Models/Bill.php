@@ -14,6 +14,9 @@ class Bill
         $this->db = $database->getConnection();
     }
 
+    /**
+     * Retrieve all bills for user with calculated remaining amount
+     */
     public function findByUserId(int $userId): array
     {
         $stmt = $this->db->prepare(
@@ -22,6 +25,8 @@ class Bill
                 b.user_id,
                 b.card_id,
                 b.amount,
+                b.paid_amount,
+                GREATEST(0.00, b.amount - b.paid_amount) AS remaining_amount,
                 b.due_date,
                 b.status,
                 b.created_at,
@@ -44,6 +49,9 @@ class Bill
         return $stmt->fetchAll();
     }
 
+    /**
+     * Retrieve active pending and partially paid bills
+     */
     public function findPendingByUserId(int $userId): array
     {
         $stmt = $this->db->prepare(
@@ -52,6 +60,8 @@ class Bill
                 b.user_id,
                 b.card_id,
                 b.amount,
+                b.paid_amount,
+                GREATEST(0.00, b.amount - b.paid_amount) AS remaining_amount,
                 b.due_date,
                 b.status,
                 b.created_at,
@@ -64,30 +74,31 @@ class Bill
              FROM bills b
              JOIN credit_cards c ON b.card_id = c.id
              WHERE b.user_id = :user_id
-               AND b.status = :status
+               AND b.status IN (\'pending\', \'partially_paid\')
              ORDER BY b.due_date ASC'
         );
 
         $stmt->execute([
-            'user_id' => $userId,
-            'status' => 'pending'
+            'user_id' => $userId
         ]);
 
         return $stmt->fetchAll();
     }
 
+    /**
+     * Total remaining unpaid dues across active statements
+     */
     public function getTotalDueByUserId(int $userId): float
     {
         $stmt = $this->db->prepare(
-            'SELECT COALESCE(SUM(amount), 0) AS total_due
+            'SELECT COALESCE(SUM(amount - paid_amount), 0) AS total_due
              FROM bills
              WHERE user_id = :user_id
-               AND status = :status'
+               AND status IN (\'pending\', \'partially_paid\')'
         );
 
         $stmt->execute([
-            'user_id' => $userId,
-            'status' => 'pending'
+            'user_id' => $userId
         ]);
 
         $result = $stmt->fetch();
@@ -95,6 +106,9 @@ class Bill
         return (float)($result['total_due'] ?? 0);
     }
 
+    /**
+     * Total count of fully settled bills
+     */
     public function getPaidCountByUserId(int $userId): int
     {
         $stmt = $this->db->prepare(
@@ -106,7 +120,7 @@ class Bill
 
         $stmt->execute([
             'user_id' => $userId,
-            'status' => 'paid'
+            'status'  => 'paid'
         ]);
 
         $result = $stmt->fetch();
@@ -114,6 +128,30 @@ class Bill
         return (int)($result['paid_count'] ?? 0);
     }
 
+    /**
+     * Total count of active pending/partially paid bills
+     */
+    public function getPendingCountByUserId(int $userId): int
+    {
+        $stmt = $this->db->prepare(
+            'SELECT COUNT(*) AS pending_count
+             FROM bills
+             WHERE user_id = :user_id
+               AND status IN (\'pending\', \'partially_paid\')'
+        );
+
+        $stmt->execute([
+            'user_id' => $userId
+        ]);
+
+        $result = $stmt->fetch();
+
+        return (int)($result['pending_count'] ?? 0);
+    }
+
+    /**
+     * Create a new statement bill
+     */
     public function create(
         int $userId,
         int $cardId,
@@ -121,19 +159,22 @@ class Bill
         string $dueDate
     ): bool {
         $stmt = $this->db->prepare(
-            'INSERT INTO bills (user_id, card_id, amount, due_date, status)
-             VALUES (:user_id, :card_id, :amount, :due_date, :status)'
+            'INSERT INTO bills (user_id, card_id, amount, paid_amount, due_date, status)
+             VALUES (:user_id, :card_id, :amount, 0.00, :due_date, :status)'
         );
 
         return $stmt->execute([
-            'user_id' => $userId,
-            'card_id' => $cardId,
-            'amount' => $amount,
+            'user_id'  => $userId,
+            'card_id'  => $cardId,
+            'amount'   => $amount,
             'due_date' => $dueDate,
-            'status' => 'pending'
+            'status'   => 'pending'
         ]);
     }
 
+    /**
+     * Find single bill by ID
+     */
     public function findById(int $id): ?array
     {
         $stmt = $this->db->prepare(
@@ -142,6 +183,8 @@ class Bill
                 b.user_id,
                 b.card_id,
                 b.amount,
+                b.paid_amount,
+                GREATEST(0.00, b.amount - b.paid_amount) AS remaining_amount,
                 b.due_date,
                 b.status,
                 b.created_at,
@@ -166,18 +209,21 @@ class Bill
         return $bill ?: null;
     }
 
+    /**
+     * Mark bill as fully paid
+     */
     public function markAsPaid(int $id, int $userId): bool
     {
         $stmt = $this->db->prepare(
             'UPDATE bills
-             SET status = :status
+             SET status = :status, paid_amount = amount
              WHERE id = :id
                AND user_id = :user_id'
         );
 
         return $stmt->execute([
-            'status' => 'paid',
-            'id' => $id,
+            'status'  => 'paid',
+            'id'      => $id,
             'user_id' => $userId
         ]);
     }
@@ -191,24 +237,26 @@ class Bill
         );
 
         return $stmt->execute([
-            'id' => $id,
+            'id'      => $id,
             'user_id' => $userId
         ]);
     }
 
+    /**
+     * Outstanding pending totals grouped by card
+     */
     public function getPendingTotalsPerCard(int $userId): array
     {
         $stmt = $this->db->prepare(
-            'SELECT card_id, COALESCE(SUM(amount), 0) AS total_pending
+            'SELECT card_id, COALESCE(SUM(amount - paid_amount), 0) AS total_pending
              FROM bills
              WHERE user_id = :user_id
-               AND status = :status
+               AND status IN (\'pending\', \'partially_paid\')
              GROUP BY card_id'
         );
 
         $stmt->execute([
-            'user_id' => $userId,
-            'status' => 'pending'
+            'user_id' => $userId
         ]);
 
         $rows = $stmt->fetchAll();
@@ -221,7 +269,7 @@ class Bill
     }
 
     /**
-     * Retrieve the most relevant active/latest bill statement per credit card
+     * Retrieve the latest statement per credit card (with unique placeholders)
      */
     public function getLatestBillsPerCard(int $userId): array
     {
@@ -231,6 +279,8 @@ class Bill
                 b.user_id,
                 b.card_id,
                 b.amount,
+                b.paid_amount,
+                GREATEST(0.00, b.amount - b.paid_amount) AS remaining_amount,
                 b.due_date,
                 b.status,
                 b.created_at
@@ -245,7 +295,7 @@ class Bill
         );
 
         $stmt->execute([
-            'uid_sub' => $userId,
+            'uid_sub'  => $userId,
             'uid_main' => $userId
         ]);
 

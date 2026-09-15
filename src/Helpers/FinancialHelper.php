@@ -6,8 +6,7 @@ class FinancialHelper
 {
     /**
      * Calculate the Minimum Amount Due for a credit card statement.
-     * Note: Minimum due calculation varies by card issuer and account terms.
-     * Demo rule used for this application: 5% of statement amount, minimum ₹250.
+     * Demo rule used for this application: 5% of statement remaining amount, minimum ₹250.
      */
     public static function calculateMinimumDue(float $totalAmount): float
     {
@@ -39,20 +38,78 @@ class FinancialHelper
     }
 
     /**
-     * Calculate Credit Card Utilization metrics with over-limit detection.
+     * Check if a statement is overdue based on due date and remaining balance.
+     * Note: Overdue is dynamically derived from due date + remaining balance.
+     */
+    public static function isOverdue(string $dueDate, float $remainingAmount): bool
+    {
+        if ($remainingAmount <= 0) {
+            return false;
+        }
+
+        $today = date('Y-m-d');
+        return $dueDate < $today;
+    }
+
+    /**
+     * Determine derived statement status, label, and badge class.
      * 
-     * @param float $creditLimit
-     * @param float $currentOutstanding
-     * @return array{
-     *   percentage: float,
-     *   formatted_percentage: string,
-     *   is_overlimit: bool,
-     *   health_status: string,
-     *   health_label: string,
-     *   badge_class: string,
-     *   bar_class: string,
-     *   progress_width: float
-     * }
+     * @param string $storedStatus Stored enum: 'pending', 'partially_paid', 'paid'
+     * @param string $dueDate Format: 'YYYY-MM-DD'
+     * @param float $amount Total statement amount
+     * @param float $paidAmount Cumulative allocated paid amount
+     * @return array{code: string, label: string, badge_class: string, is_overdue: bool, remaining_amount: float}
+     */
+    public static function getDerivedStatementStatus(
+        string $storedStatus,
+        string $dueDate,
+        float $amount,
+        float $paidAmount
+    ): array {
+        $remaining = max(0.00, round($amount - $paidAmount, 2));
+        $isOverdue = self::isOverdue($dueDate, $remaining);
+
+        if ($remaining <= 0 || $storedStatus === 'paid') {
+            return [
+                'code' => 'paid',
+                'label' => 'Settled & Paid',
+                'badge_class' => 'bg-success-subtle text-success-emphasis border border-success-subtle',
+                'is_overdue' => false,
+                'remaining_amount' => 0.00
+            ];
+        }
+
+        if ($isOverdue) {
+            return [
+                'code' => 'overdue',
+                'label' => 'Overdue Statement',
+                'badge_class' => 'bg-danger text-white border border-danger',
+                'is_overdue' => true,
+                'remaining_amount' => $remaining
+            ];
+        }
+
+        if ($paidAmount > 0 || $storedStatus === 'partially_paid') {
+            return [
+                'code' => 'partially_paid',
+                'label' => 'Partially Paid',
+                'badge_class' => 'bg-info-subtle text-info-emphasis border border-info-subtle',
+                'is_overdue' => false,
+                'remaining_amount' => $remaining
+            ];
+        }
+
+        return [
+            'code' => 'pending',
+            'label' => 'Pending Due',
+            'badge_class' => 'bg-warning-subtle text-warning-emphasis border border-warning-subtle',
+            'is_overdue' => false,
+            'remaining_amount' => $remaining
+        ];
+    }
+
+    /**
+     * Calculate Credit Card Utilization metrics with over-limit detection.
      */
     public static function calculateUtilization(float $creditLimit, float $currentOutstanding): array
     {

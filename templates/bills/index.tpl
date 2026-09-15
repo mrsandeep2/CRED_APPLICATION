@@ -20,6 +20,10 @@
     </div>
 
     <div class="d-flex align-items-center gap-2">
+        <a href="/cred-app/public/payments/history" class="btn btn-sm btn-outline-warning text-dark rounded-pill px-3 d-inline-flex align-items-center gap-1 shadow-sm" style="border-color: #f59e0b;">
+            <i class="bi bi-journal-text text-warning"></i>
+            <span>Transaction Ledger</span>
+        </a>
         <a href="/cred-app/public/cards" class="btn btn-sm btn-outline-primary rounded-pill px-3">
             <i class="bi bi-wallet2"></i>
             <span>My Cards</span>
@@ -37,10 +41,10 @@
         <div class="card cred-card h-100 p-4" style="background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);">
             <div class="d-flex align-items-center justify-content-between">
                 <div>
-                    <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.8px;">Total Outstanding Due</span>
+                    <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.8px;">Total Outstanding Balance</span>
                     <h2 class="fw-bold my-2 text-dark">₹{$total_due|default:'0.00'}</h2>
                     <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-3 py-1 small">
-                        <i class="bi bi-clock-history me-1"></i> {$pending_bills|default:0} Pending Statements
+                        <i class="bi bi-clock-history me-1"></i> {$pending_bills|default:0} Active Statements Due
                     </span>
                 </div>
                 <div class="d-flex align-items-center justify-content-center rounded-4" style="width: 58px; height: 58px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; color: #b45309; font-size: 1.6rem; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);">
@@ -54,10 +58,10 @@
         <div class="card cred-card h-100 p-4" style="background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);">
             <div class="d-flex align-items-center justify-content-between">
                 <div>
-                    <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.8px;">Cleared & Paid Bills</span>
+                    <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.8px;">Cleared & Settled Statements</span>
                     <h2 class="fw-bold my-2 text-dark">{$paid_bills|default:0} <span class="fs-6 fw-normal text-muted">Statements</span></h2>
                     <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill px-3 py-1 small">
-                        <i class="bi bi-check-circle-fill me-1"></i> 100% On-Time Settlement
+                        <i class="bi bi-check-circle-fill me-1"></i> {if $paid_bills > 0}{$paid_bills} Settled Statements{else}0 Settled Statements{/if}
                     </span>
                 </div>
                 <div class="d-flex align-items-center justify-content-center rounded-4" style="width: 58px; height: 58px; background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border: 1px solid #10b981; color: #047857; font-size: 1.6rem; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">
@@ -76,7 +80,7 @@
                 <i class="bi bi-wallet2 text-warning"></i>
                 <span>Statement History & Active Bills</span>
             </h4>
-            <p class="text-muted small mb-0">Track upcoming dues, payment settlements, and digital receipts.</p>
+            <p class="text-muted small mb-0">Track upcoming dues, partial allocations, and settle statements.</p>
         </div>
 
         <!-- Filter Tabs -->
@@ -85,7 +89,7 @@
                 All <span class="badge bg-secondary ms-1">{$all_count|default:0}</span>
             </button>
             <button class="btn btn-sm rounded-pill px-3 fw-semibold bill-filter-btn text-warning-emphasis" data-filter="pending" onclick="filterBills('pending', this)">
-                Pending <span class="badge bg-warning text-dark ms-1">{$pending_bills|default:0}</span>
+                Active Due <span class="badge bg-warning text-dark ms-1">{$pending_bills|default:0}</span>
             </button>
             <button class="btn btn-sm rounded-pill px-3 fw-semibold bill-filter-btn text-success" data-filter="paid" onclick="filterBills('paid', this)">
                 Settled <span class="badge bg-success ms-1">{$paid_bills|default:0}</span>
@@ -109,7 +113,7 @@
                     </thead>
                     <tbody>
                     {foreach $bills as $bill}
-                        <tr class="bill-row" data-status="{$bill.status}">
+                        <tr class="bill-row" data-status="{if $bill.derived_code == 'paid'}paid{else}pending{/if}">
                             <td class="ps-4 py-3">
                                 <div class="d-flex align-items-center gap-3">
                                     <div class="d-flex align-items-center justify-content-center rounded-3 bg-light border p-2 text-primary" style="width: 44px; height: 44px;">
@@ -125,18 +129,23 @@
                                 </div>
                             </td>
                             <td class="py-3">
-                                <span class="fw-bold text-dark fs-6">₹{$bill.amount}</span>
+                                <span class="fw-bold text-dark fs-6">₹{$bill.remaining_amount}</span>
+                                {if $bill.paid_amount > 0 && $bill.derived_code != 'paid'}
+                                    <div class="small text-muted">
+                                        Total: ₹{$bill.amount} &bull; <span class="text-success fw-semibold">₹{$bill.paid_amount} paid</span>
+                                    </div>
+                                {/if}
                             </td>
                             <td class="py-3">
-                                <span class="small fw-semibold text-secondary">₹{$bill.min_due|default:$bill.amount}</span>
+                                <span class="small fw-semibold text-secondary">₹{$bill.min_due|default:$bill.remaining_amount}</span>
                             </td>
                             <td class="py-3">
                                 <div class="d-flex flex-column gap-1">
                                     <span class="small fw-semibold text-dark">
                                         <i class="bi bi-calendar3 me-1 text-muted"></i> {$bill.due_date}
                                     </span>
-                                    {if $bill.urgency == 'overdue'}
-                                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-2 py-1 text-start" style="width: fit-content;">
+                                    {if $bill.derived_code == 'overdue'}
+                                        <span class="badge bg-danger text-white rounded-pill px-2 py-1 text-start" style="width: fit-content;">
                                             <i class="bi bi-exclamation-triangle-fill me-1"></i> {$bill.urgency_text}
                                         </span>
                                     {elseif $bill.urgency == 'due_today'}
@@ -147,7 +156,7 @@
                                         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning rounded-pill px-2 py-1 text-start" style="width: fit-content;">
                                             <i class="bi bi-hourglass-top me-1"></i> {$bill.urgency_text}
                                         </span>
-                                    {elseif $bill.urgency == 'paid'}
+                                    {elseif $bill.derived_code == 'paid'}
                                         <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill px-2 py-1 text-start" style="width: fit-content;">
                                             <i class="bi bi-check2-circle me-1"></i> Cleared
                                         </span>
@@ -159,19 +168,21 @@
                                 </div>
                             </td>
                             <td class="py-3">
-                                {if $bill.status == 'paid'}
-                                    <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill px-3 py-2 fw-semibold">
+                                <span class="badge {$bill.derived_badge} rounded-pill px-3 py-2 fw-semibold">
+                                    {if $bill.derived_code == 'paid'}
                                         <i class="bi bi-check-circle-fill me-1"></i> Paid
-                                    </span>
-                                {else}
-                                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-3 py-2 fw-semibold">
+                                    {elseif $bill.derived_code == 'overdue'}
+                                        <i class="bi bi-exclamation-octagon-fill me-1"></i> Overdue
+                                    {elseif $bill.derived_code == 'partially_paid'}
+                                        <i class="bi bi-pie-chart-fill me-1"></i> Partially Paid
+                                    {else}
                                         <i class="bi bi-hourglass-split me-1"></i> Pending
-                                    </span>
-                                {/if}
+                                    {/if}
+                                </span>
                             </td>
                             <td class="pe-4 py-3 text-end">
                                 <div class="d-flex align-items-center justify-content-end gap-2">
-                                    {if $bill.status == 'paid'}
+                                    {if $bill.derived_code == 'paid'}
                                         <button class="btn btn-sm btn-outline-success rounded-pill px-3" 
                                                 data-bs-toggle="modal" 
                                                 data-bs-target="#receiptModal{$bill.id}">
@@ -179,7 +190,7 @@
                                         </button>
                                     {else}
                                         <a href="/cred-app/public/payments/checkout?bill_id={$bill.id}" class="btn btn-sm btn-royal-primary rounded-pill px-3 shadow-sm text-decoration-none">
-                                            <i class="bi bi-lightning-charge-fill"></i> Pay Now
+                                            <i class="bi bi-lightning-charge-fill"></i> Pay Bill
                                         </a>
                                     {/if}
 
@@ -192,7 +203,7 @@
                                     </form>
                                 </div>
 
-                                {if $bill.status == 'paid'}
+                                {if $bill.derived_code == 'paid'}
                                     <!-- Payment Receipt Modal -->
                                     <div class="modal fade" id="receiptModal{$bill.id}" tabindex="-1" aria-labelledby="receiptModalLabel{$bill.id}" aria-hidden="true">
                                         <div class="modal-dialog modal-dialog-centered">
@@ -214,7 +225,7 @@
                                                     
                                                     <!-- Amount Banner -->
                                                     <div class="p-3 rounded-4 mb-3 text-center" style="background: linear-gradient(135deg, #f8fafc 0%, #fef3c7 100%); border: 1px solid rgba(217, 119, 6, 0.2);">
-                                                        <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.8px;">Settled Amount</span>
+                                                        <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.8px;">Settled Statement Amount</span>
                                                         <h2 class="fw-bold my-1 text-dark">₹{$bill.amount}</h2>
                                                         <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill px-3 py-1 small">
                                                             <i class="bi bi-check-all me-1"></i> Success & Verified
@@ -224,29 +235,25 @@
                                                     <!-- Receipt Meta List -->
                                                     <div class="bg-light p-3 rounded-3 border text-start mb-3">
                                                         <div class="d-flex justify-content-between py-1 border-bottom small">
-                                                            <span class="text-muted">Transaction ID</span>
-                                                            <span class="font-monospace fw-bold text-dark">{$bill.txn_ref}</span>
+                                                            <span class="text-muted">Statement Reference</span>
+                                                            <span class="font-monospace fw-bold text-dark">#STMT-{$bill.id}</span>
                                                         </div>
                                                         <div class="d-flex justify-content-between py-1 border-bottom small">
-                                                            <span class="text-muted">Card Details</span>
+                                                            <span class="text-muted">Card Account</span>
                                                             <span class="fw-semibold text-dark">{$bill.bank_name} ({$bill.masked_card_number})</span>
                                                         </div>
                                                         <div class="d-flex justify-content-between py-1 border-bottom small">
                                                             <span class="text-muted">Card Holder</span>
                                                             <span class="fw-semibold text-dark">{$bill.card_holder}</span>
                                                         </div>
-                                                        <div class="d-flex justify-content-between py-1 border-bottom small">
+                                                        <div class="d-flex justify-content-between py-1 small">
                                                             <span class="text-muted">Statement Due Date</span>
                                                             <span class="fw-semibold text-dark">{$bill.due_date}</span>
-                                                        </div>
-                                                        <div class="d-flex justify-content-between py-1 small">
-                                                            <span class="text-muted">Settlement Time</span>
-                                                            <span class="fw-semibold text-dark">{$bill.settlement_date}</span>
                                                         </div>
                                                     </div>
 
                                                     <div class="text-center small text-muted">
-                                                        <i class="bi bi-shield-lock-fill text-success me-1"></i> Secured with 256-bit bank grade encryption.
+                                                        <i class="bi bi-shield-lock-fill text-success me-1"></i> Recorded in audited financial ledger.
                                                     </div>
                                                 </div>
 
@@ -337,4 +344,3 @@ function filterBills(status, btn) {
 </script>
 
 {/block}
-

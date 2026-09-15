@@ -48,13 +48,13 @@
             <div class="col-lg-8">
                 <div class="d-inline-flex align-items-center gap-2 badge bg-white text-warning-emphasis border border-warning-subtle rounded-pill px-3 py-2 mb-3 shadow-sm">
                     <i class="bi bi-award-fill text-warning"></i>
-                    <span class="fw-semibold">Royal Tier Member • 100% Protected</span>
+                    <span class="fw-semibold">Royal Tier Member &bull; Verified Account</span>
                 </div>
                 <h1 class="display-6 fw-bold mb-2 text-dark">
                     Welcome back, <span style="background: linear-gradient(135deg, #1e3a8a 0%, #b45309 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{$name|default:'Member'}</span>
                 </h1>
                 <p class="text-secondary fs-6 mb-4 mb-lg-0" style="max-width: 580px;">
-                    Track and manage your credit cards with elegance. Instant bill notifications, rewarding payments, and seamless card controls.
+                    Track and manage your credit cards with elegance. Real-time statement tracking, flexible payments, and seamless card controls.
                 </p>
             </div>
             <div class="col-lg-4 text-lg-end">
@@ -64,7 +64,7 @@
                         <span>Add New Bill</span>
                     </a>
                     <span class="small text-muted text-center">
-                        <i class="bi bi-shield-check text-success"></i> Instant Verification
+                        <i class="bi bi-shield-check text-success"></i> Audited Financial Ledger
                     </span>
                 </div>
             </div>
@@ -143,7 +143,7 @@
                         <span class="text-uppercase fw-bold text-muted small" style="letter-spacing: 0.6px;">Paid Bills</span>
                         <h3 class="fw-bold my-1 text-dark">{$paid_bills} <span class="fs-6 fw-normal text-muted">Cleared</span></h3>
                         <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill px-2 py-0 small">
-                            <i class="bi bi-check-circle-fill me-1"></i> 100% On Time
+                            <i class="bi bi-check-circle-fill me-1"></i> Settled Statements
                         </span>
                     </div>
                     <div class="d-flex align-items-center justify-content-center rounded-4" style="width: 48px; height: 48px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; color: #b45309; font-size: 1.3rem; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);">
@@ -207,10 +207,15 @@
                                 </div>
                             </td>
                             <td class="py-3">
-                                <span class="fw-bold text-dark fs-6">₹{$bill.amount}</span>
+                                <span class="fw-bold text-dark fs-6">₹{$bill.remaining_amount}</span>
+                                {if $bill.paid_amount > 0 && $bill.derived_code != 'paid'}
+                                    <div class="small text-muted" style="font-size: 0.75rem;">
+                                        Total: ₹{$bill.amount} &bull; <span class="text-success fw-semibold">₹{$bill.paid_amount} paid</span>
+                                    </div>
+                                {/if}
                             </td>
                             <td class="py-3">
-                                <span class="small fw-semibold text-secondary">₹{$bill.min_due|default:$bill.amount}</span>
+                                <span class="small fw-semibold text-secondary">₹{$bill.min_due|default:$bill.remaining_amount}</span>
                             </td>
                             <td class="py-3">
                                 <div class="d-flex flex-column gap-1">
@@ -241,15 +246,17 @@
                                 </div>
                             </td>
                             <td class="py-3">
-                                {if $bill.status == 'paid'}
-                                    <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill px-3 py-2 fw-semibold">
+                                <span class="badge {$bill.derived_badge} rounded-pill px-3 py-2 fw-semibold">
+                                    {if $bill.derived_code == 'paid'}
                                         <i class="bi bi-check-circle-fill me-1"></i> Paid
-                                    </span>
-                                {else}
-                                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-3 py-2 fw-semibold">
+                                    {elseif $bill.derived_code == 'overdue'}
+                                        <i class="bi bi-exclamation-octagon-fill me-1"></i> Overdue
+                                    {elseif $bill.derived_code == 'partially_paid'}
+                                        <i class="bi bi-pie-chart-fill me-1"></i> Partially Paid
+                                    {else}
                                         <i class="bi bi-hourglass-split me-1"></i> Pending
-                                    </span>
-                                {/if}
+                                    {/if}
+                                </span>
                             </td>
                             <td class="pe-4 py-3 text-end">
                                 {if $bill.status == 'paid'}
@@ -325,7 +332,7 @@
                                     </div>
                                 {else}
                                     <a href="/cred-app/public/payments/checkout?bill_id={$bill.id}" class="btn btn-sm btn-royal-primary rounded-pill px-3 shadow-sm text-decoration-none">
-                                        <i class="bi bi-lightning-charge-fill"></i> Pay Now
+                                        <i class="bi bi-lightning-charge-fill"></i> Pay Due (₹{$bill.remaining_amount})
                                     </a>
                                 {/if}
                             </td>
